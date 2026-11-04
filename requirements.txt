@@ -1,0 +1,13 @@
+ultralytics>=8.3
+supervision>=0.25
+opencv-python
+numpy
+pandas
+plotly
+streamlit>=1.40
+onnx
+onnxruntime
+# optional: microscopic validation in SUMO (scripts/sumo_compare.py)
+eclipse-sumo
+traci
+lap>=0.5

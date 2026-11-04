@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+*.pt
+*.onnx
+data/*.mp4
+sumo/*.xml
+data/osm/
+data/clips/
+data/models/
+data/clip_frames/
+data/clip_videos/
+data/compare_log.txt

@@ -1,0 +1,91 @@
+{
+  "banashankari_01": {
+    "YOLOv8n (COCO)": {
+      "frames_analysed": 223,
+      "avg_visible": 4.1,
+      "max_visible": 10,
+      "ms_per_frame": 52.4,
+      "tracks_by_kind": {
+        "car": 15,
+        "bus": 13,
+        "motorcycle": 1
+      },
+      "tracks_total": 29,
+      "share_of_detections_pct": {
+        "bus": 75.0,
+        "car": 23.2,
+        "motorcycle": 1.5,
+        "truck": 0.2
+      },
+      "avg_visible_pcu": 10.1
+    },
+    "UVH-26 YOLOv11-S": {
+      "frames_analysed": 223,
+      "avg_visible": 8.4,
+      "max_visible": 16,
+      "ms_per_frame": 157.5,
+      "tracks_by_kind": {
+        "bus": 22,
+        "auto": 17,
+        "car": 12,
+        "motorcycle": 10,
+        "lcv": 2
+      },
+      "tracks_total": 63,
+      "share_of_detections_pct": {
+        "bus": 54.7,
+        "auto": 22.6,
+        "motorcycle": 13.0,
+        "car": 8.0,
+        "lcv": 1.6
+      },
+      "avg_visible_pcu": 17.6
+    }
+  },
+  "banashankari_02": {
+    "YOLOv8n (COCO)": {
+      "frames_analysed": 294,
+      "avg_visible": 6.5,
+      "max_visible": 15,
+      "ms_per_frame": 75.5,
+      "tracks_by_kind": {
+        "bus": 17,
+        "truck": 15,
+        "car": 15,
+        "motorcycle": 8
+      },
+      "tracks_total": 55,
+      "share_of_detections_pct": {
+        "bus": 41.7,
+        "truck": 25.8,
+        "car": 19.5,
+        "motorcycle": 13.0
+      },
+      "avg_visible_pcu": 14.9
+    },
+    "UVH-26 YOLOv11-S": {
+      "frames_analysed": 294,
+      "avg_visible": 18.7,
+      "max_visible": 45,
+      "ms_per_frame": 165.5,
+      "tracks_by_kind": {
+        "auto": 39,
+        "motorcycle": 32,
+        "bus": 21,
+        "car": 12,
+        "lcv": 2,
+        "truck": 1
+      },
+      "tracks_total": 107,
+      "share_of_detections_pct": {
+        "auto": 49.4,
+        "motorcycle": 19.7,
+        "bus": 18.9,
+        "car": 8.1,
+        "lcv": 2.9,
+        "truck": 1.0
+      },
+      "avg_visible_pcu": 26.3
+    }
+  }
+}

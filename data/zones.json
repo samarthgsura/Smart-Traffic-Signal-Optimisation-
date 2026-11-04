@@ -1,0 +1,9 @@
+{
+  "note": "Approach zones for data/vehicles.mp4. Points are [x, y] as fractions of frame width/height. For a real junction, draw one zone per approach (North/East/South/West).",
+  "zones": [
+    {"name": "Inbound L1",  "polygon": [[0.36, 0.33], [0.40, 0.33], [0.25, 1.0], [0.02, 1.0]]},
+    {"name": "Inbound L2",  "polygon": [[0.40, 0.33], [0.44, 0.33], [0.46, 1.0], [0.25, 1.0]]},
+    {"name": "Outbound L1", "polygon": [[0.49, 0.33], [0.55, 0.33], [0.95, 1.0], [0.73, 1.0]]},
+    {"name": "Outbound L2", "polygon": [[0.55, 0.33], [0.62, 0.33], [1.0, 0.82], [1.0, 1.0], [0.95, 1.0]]}
+  ]
+}

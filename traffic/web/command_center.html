@@ -1,0 +1,1214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signal Mesh Command Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Nunito:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<!--THREE_JS-->
+<style>
+/* Command center as a hand-painted city diorama: warm paper panels, sage / terracotta / sky accents.
+   Layout: control bar on top, 3D (or flat map) city view with soft HUD cards, telemetry + AI explanations on the right. */
+:root {
+  --paper: #f3ecdd; --panel: #fbf7ee; --panel-2: #f4ecdc; --line: #e3d6bd; --line-2: #d6c6a6;
+  --ink: #3d3830; --muted: #857a66; --faint: #b3a68d;
+  --sage: #5f8f6b; --teal: #4b8a83; --sky: #6a9cbd; --terra: #c4673f; --mustard: #cf9b36; --rose: #c2504a; --lav: #8a76ad; --taupe: #998c74;
+  --display: "Fraunces", Georgia, serif;
+  --body: "Nunito", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--paper); color: var(--ink); font: 13px/1.45 var(--body); }
+button, select { font: inherit; color: inherit; }
+#app { display: grid; grid-template-rows: auto 1fr; height: 100%; min-height: 0; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.brand { display: flex; gap: 10px; align-items: center; margin-right: auto; min-width: 0; }
+.brand > div { min-width: 0; }
+.logo { width: 30px; height: 30px; border-radius: 50%; flex: none; background: radial-gradient(circle at 35% 35%, #fff6 0 18%, transparent 19%), conic-gradient(var(--rose) 0 33%, var(--mustard) 0 66%, var(--sage) 0); box-shadow: inset 0 0 0 2px #fff8; }
+.t1 { font-family: var(--display); font-weight: 700; font-size: 19px; letter-spacing: .01em; }
+.t2 { color: var(--muted); font-size: 12px; max-width: 520px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 999px; overflow: hidden; background: var(--panel-2); }
+.seg button { background: none; border: 0; padding: 6px 12px; cursor: pointer; font-weight: 700; color: var(--muted); }
+.seg button + button { border-left: 1px solid var(--line-2); }
+.seg button[aria-pressed="true"] { color: #fffaf0; background: var(--teal); }
+.seg.mode button[data-v="fixed"][aria-pressed="true"] { background: var(--taupe); }
+.seg.mode button[data-v="isolated"][aria-pressed="true"] { background: var(--lav); }
+.seg button:focus-visible, .btn:focus-visible, select:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
+.btn { background: var(--panel); border: 1px solid var(--line-2); border-radius: 999px; padding: 6px 14px; cursor: pointer; font-weight: 700; }
+.btn:hover { border-color: var(--teal); }
+.btn.danger { border-color: #e0b0a6; color: #9e3d33; background: #fbefe9; }
+.btn.danger:hover { background: #f6e0d8; }
+.btn.go { border-color: #a9c7bf; color: #2f645d; background: #ecf4f0; }
+main { display: grid; grid-template-columns: minmax(0, 1fr) 350px; min-height: 0; }
+@media (max-width: 960px) { main { grid-template-columns: 1fr; grid-template-rows: 600px auto; } #app { height: auto; } }
+.mapwrap { position: relative; min-height: 0; min-width: 0; overflow: hidden; background: linear-gradient(#bcd9e8, #f2e6cc); touch-action: none; }
+.mapwrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#map { cursor: grab; } #map.dragging, #gl.dragging { cursor: grabbing; }
+#gl { cursor: grab; }
+#overlay { pointer-events: none; }
+.hud { position: absolute; pointer-events: none; }
+.card-hud { background: rgba(251,247,238,.9); border: 1px solid var(--line-2); border-radius: 16px; box-shadow: 0 6px 18px rgba(86,70,40,.12); }
+.hud.tl { top: 12px; left: 12px; display: flex; gap: 12px; align-items: center; padding: 10px 16px 10px 10px; }
+.ring { width: 60px; height: 60px; }
+.xp { font-family: var(--display); font-weight: 700; font-size: 28px; line-height: 1; font-variant-numeric: tabular-nums; }
+.xp small { font-family: var(--body); font-size: 12px; color: var(--muted); font-weight: 700; }
+.rank { font-weight: 800; letter-spacing: .04em; font-size: 12px; }
+.sub { color: var(--muted); font-size: 12px; }
+.hud.tr { top: 12px; right: 12px; text-align: right; padding: 8px 12px; pointer-events: auto; display: grid; gap: 5px; justify-items: end; }
+.clock { font-family: var(--mono); font-size: 19px; font-weight: 500; }
+.modechip { display: inline-block; font-weight: 800; font-size: 11px; padding: 2px 10px; border-radius: 99px; color: #fffaf0; }
+.hud.tr select { max-width: 230px; font-size: 12px; }
+.hud.bl { left: 12px; bottom: 12px; display: flex; flex-wrap: wrap; gap: 5px 12px; max-width: calc(100% - 210px); padding: 7px 12px; font-size: 12px; color: var(--muted); }
+.lg { display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+.sw { width: 13px; height: 6px; border-radius: 3px; display: inline-block; }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.hud.br { right: 12px; bottom: 12px; display: grid; gap: 6px; justify-items: end; pointer-events: auto; }
+.zoom { display: grid; border: 1px solid var(--line-2); border-radius: 14px; overflow: hidden; background: rgba(251,247,238,.92); }
+.zoom button { background: none; border: 0; width: 34px; height: 30px; cursor: pointer; font-weight: 800; font-size: 15px; color: var(--ink); }
+.zoom button + button { border-top: 1px solid var(--line); }
+.zoom button:hover { background: #efe5d2; }
+.scalebar { font-family: var(--mono); font-size: 11px; color: var(--muted); text-align: right; padding: 4px 8px; }
+.scalebar i { display: block; height: 4px; border: 1.5px solid var(--muted); border-top: 0; margin-top: 2px; margin-left: auto; }
+.attrib { font-size: 10px; color: #6d6455; background: rgba(251,247,238,.75); padding: 1px 6px; border-radius: 6px; }
+.banner { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); pointer-events: none; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.alert { font-weight: 800; font-size: 12px; padding: 4px 14px; border-radius: 99px; background: rgba(251,247,238,.95); border: 1.5px solid currentColor; white-space: nowrap; box-shadow: 0 4px 12px rgba(86,70,40,.12); }
+.loading { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(243,236,221,.82); z-index: 6; }
+.loading div { text-align: center; }
+.loading b { display: block; font-family: var(--display); font-size: 22px; }
+.lbar { width: 260px; height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin: 10px auto 0; }
+.lbar i { display: block; height: 100%; width: 0; background: var(--sage); }
+.side { border-left: 1px solid var(--line); background: var(--paper); overflow-y: auto; overflow-x: hidden; min-height: 0; min-width: 0; padding: 12px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-content: start; }
+.side > * { min-width: 0; }
+@media (max-width: 960px) { .side { border-left: 0; border-top: 1px solid var(--line); } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 11px 13px; }
+.h { font-weight: 800; letter-spacing: .06em; text-transform: uppercase; font-size: 11px; color: var(--muted); margin: 0 0 8px; display: flex; justify-content: space-between; gap: 8px; }
+.kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 9px 11px; min-width: 0; }
+.kpi .k { color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; font-weight: 800; }
+.kpi .v { font-family: var(--display); font-weight: 700; font-size: 23px; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.kpi .d { font-size: 11.5px; font-weight: 700; overflow-wrap: anywhere; }
+.good { color: var(--sage); } .bad { color: var(--rose); } .neutral { color: var(--muted); }
+table.h2h { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+table.h2h th { text-align: right; color: var(--muted); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; font-weight: 800; padding: 0 4px 4px; }
+table.h2h th:first-child, table.h2h td:first-child { text-align: left; }
+table.h2h td { padding: 5px 4px; border-top: 1px solid var(--line); text-align: right; font-weight: 700; }
+table.h2h tr { cursor: pointer; }
+table.h2h tr.sel td { background: #eaf2ee; }
+table.h2h tr:hover td { background: #f5eee0; }
+.ctrl { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.ctrl .btn { flex: none; }
+.row { display: flex; gap: 6px; align-items: center; }
+.row > select { flex: 1; min-width: 0; }
+select { background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px; padding: 5px 8px; }
+label.s { color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; font-weight: 800; }
+.feed { font-size: 12px; max-height: 150px; overflow-y: auto; display: grid; gap: 3px; }
+.feed div { color: var(--muted); overflow-wrap: anywhere; }
+.feed b { color: var(--ink); font-family: var(--mono); font-weight: 500; font-size: 11px; }
+.impact { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; margin-bottom: 8px; }
+.impact div { min-width: 0; }
+.impact b { display: block; font-family: var(--display); font-size: 18px; font-variant-numeric: tabular-nums; }
+.impact span { color: var(--muted); font-size: 11.5px; font-weight: 700; }
+.aifeed { display: grid; gap: 6px; max-height: 260px; overflow-y: auto; }
+.ai { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 8px; align-items: start; padding: 7px 8px; border-radius: 12px; background: var(--panel-2); cursor: pointer; }
+.ai:hover { background: #efe4cf; }
+.ai .ic { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; color: #fffaf0; font-weight: 800; font-size: 13px; }
+.ai .tx { font-size: 12.5px; line-height: 1.35; min-width: 0; }
+.ai .tx b { font-weight: 800; }
+.ai .tm { color: var(--faint); font-family: var(--mono); font-size: 10.5px; }
+.drawer { position: absolute; top: 0; right: 0; bottom: 0; width: min(390px, 92%); background: rgba(251,247,238,.98); border-left: 1px solid var(--line-2); box-shadow: -14px 0 30px rgba(86,70,40,.16); padding: 14px; display: grid; grid-template-rows: auto auto auto auto auto 1fr auto; gap: 9px; min-height: 0; z-index: 5; overflow-y: auto; }
+.drawer h3 { margin: 0; font-family: var(--display); font-size: 20px; padding-right: 70px; }
+.close { position: absolute; top: 10px; right: 10px; }
+.chip { display: inline-block; font-weight: 800; font-size: 11px; padding: 2px 10px; border-radius: 99px; border: 1.5px solid currentColor; }
+.appr { display: grid; grid-template-columns: 10px minmax(0, 1fr) 60px 52px; gap: 6px 8px; align-items: center; font-size: 12px; max-height: 160px; overflow-y: auto; }
+.appr .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qbar { height: 7px; background: var(--line); border-radius: 4px; overflow: hidden; }
+.qbar i { display: block; height: 100%; background: var(--sage); }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) 1fr; gap: 4px 8px; align-items: center; font-size: 11.5px; }
+.split .bars { display: grid; gap: 2px; }
+.split .bars i { display: block; height: 6px; border-radius: 3px; }
+.peers { display: flex; flex-wrap: wrap; gap: 6px; max-height: 60px; overflow-y: auto; }
+.term { background: #f7f1e4; border: 1px solid var(--line); border-radius: 12px; font-family: var(--mono); font-size: 10.5px; padding: 8px; overflow-y: auto; min-height: 100px; max-height: 190px; }
+.term div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.k-PLATOON { color: #3f7f8c; } .k-STATE_GOSSIP { color: #8a98aa; } .k-BACKPRESSURE_WARN { color: #b9742f; } .k-PRIORITY_CORRIDOR { color: var(--rose); } .k-DROP { color: var(--faint); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="bar">
+    <div class="brand"><span class="logo" aria-hidden="true"></span>
+      <div><div class="t1">Bengaluru Signal Mesh</div><div class="t2" id="cityDesc">City-scale peer-to-peer adaptive signal control</div></div>
+    </div>
+    <div class="seg" id="viewSeg" role="group" aria-label="View"></div>
+    <div class="seg" id="citySeg" role="group" aria-label="City"></div>
+    <div class="seg mode" id="modeSeg" role="group" aria-label="Control mode"></div>
+    <div class="seg" id="speedSeg" role="group" aria-label="Simulation speed"></div>
+    <button class="btn" id="pauseBtn">Pause</button>
+    <button class="btn" id="resetBtn">Reset</button>
+  </header>
+  <main>
+    <section class="mapwrap" id="mapwrap">
+      <canvas id="gl" aria-label="3D city view. Drag to pan, right-drag or shift-drag to rotate, scroll to zoom, click a signal to inspect it."></canvas>
+      <canvas id="map" hidden aria-label="Flat city map. Drag to pan, scroll to zoom, click a signal to inspect it."></canvas>
+      <canvas id="overlay"></canvas>
+      <div class="hud tl card-hud">
+        <svg class="ring" viewBox="0 0 64 64" aria-hidden="true">
+          <circle cx="32" cy="32" r="26" fill="none" stroke="#e8dcc4" stroke-width="7"/>
+          <circle id="ringArc" cx="32" cy="32" r="26" fill="none" stroke="#5f8f6b" stroke-width="7" stroke-linecap="round" stroke-dasharray="0 170" transform="rotate(-90 32 32)"/>
+        </svg>
+        <div>
+          <div class="sub">City Efficiency Score</div>
+          <div class="xp"><span id="xp">–</span> <small>/ 1000 XP</small></div>
+          <div class="rank" id="rank">Calibrating…</div>
+        </div>
+      </div>
+      <div class="banner" id="banner"></div>
+      <div class="hud tr card-hud">
+        <div class="clock" id="clock">17:00:00</div>
+        <span class="modechip" id="modeChip">P2P MESH AI</span>
+        <select id="jump" aria-label="Fly to a junction"><option value="">Fly to…</option></select>
+      </div>
+      <div class="hud bl card-hud" id="legend"></div>
+      <div class="hud br">
+        <div class="scalebar card-hud"><span id="scaleTxt">1 km</span><i id="scaleBar" style="width:60px"></i></div>
+        <div class="zoom"><button id="zIn" aria-label="Zoom in">+</button><button id="zOut" aria-label="Zoom out">−</button><button id="zFit" aria-label="Show whole city" style="font-size:13px">⤢</button></div>
+        <div class="attrib" id="attrib"></div>
+      </div>
+      <div class="loading" id="loading"><div><b>Waking the city up</b><span class="sub" id="loadTxt">Filling the roads with traffic…</span><div class="lbar"><i id="loadBar"></i></div></div></div>
+      <aside class="drawer" id="inspector" hidden aria-label="Junction inspector">
+        <button class="btn close" id="closeInsp">Close</button>
+        <div><div class="sub">Junction inspector</div><h3 id="iName">–</h3><span class="chip" id="iStatus">–</span></div>
+        <div class="card"><div class="h"><span>Green right now</span><span id="iElapsed"></span></div><div id="iGreen" style="font-weight:800;font-size:15px">–</div><div class="sub" id="iWhy" style="margin-top:4px"></div></div>
+        <div class="card"><div class="h"><span>Queues</span><span>PCU · fill</span></div><div class="appr" id="iAppr"></div></div>
+        <div class="card"><div class="h"><span>Green time: AI vs fixed timer</span><span id="iSplitNote"></span></div><div class="split" id="iSplit"></div></div>
+        <div style="display:grid;grid-template-rows:auto auto 1fr;gap:6px;min-height:0">
+          <div class="h" style="margin:0"><span>Mesh peers</span><span id="iPkt"></span></div>
+          <div class="peers" id="iPeers"></div>
+          <div class="term" id="iTerm"></div>
+        </div>
+        <div class="row"><button class="btn danger" id="iKill">Kill this peer</button><span class="sub" id="iFallback"></span></div>
+      </aside>
+    </section>
+    <aside class="side">
+      <div class="kpis">
+        <div class="kpi"><div class="k">Avg delay / trip</div><div class="v" id="kDelay">–</div><div class="d" id="kDelayD">vs fixed timer</div></div>
+        <div class="kpi"><div class="k">Ambulance delay</div><div class="v" id="kAmb">–</div><div class="d" id="kAmbD">avg per trip</div></div>
+        <div class="kpi"><div class="k">Throughput</div><div class="v" id="kThr">–</div><div class="d" id="kThrD">PCU / hour</div></div>
+        <div class="kpi"><div class="k">ONNX edge</div><div class="v" id="kFps">–</div><div class="d" id="kFpsD">CPU only, YOLOv8n</div></div>
+      </div>
+      <div class="card">
+        <div class="h"><span>What the AI is changing</span><span id="aiMode"></span></div>
+        <div class="impact" id="impact"></div>
+        <div class="aifeed" id="aiFeed"></div>
+      </div>
+      <div class="card">
+        <div class="h"><span>Head-to-head · same traffic</span><span>last 10 min</span></div>
+        <table class="h2h"><thead><tr><th>Mode</th><th>Delay</th><th>PCU/h</th><th>Amb.</th><th>XP</th></tr></thead><tbody id="h2h"></tbody></table>
+        <div class="sub" id="netInfo" style="margin-top:6px"></div>
+      </div>
+      <div class="card ctrl">
+        <div class="h"><span>God mode</span><span id="godNote"></span></div>
+        <label class="s" for="ambRoute">Emergency ambulance</label>
+        <div class="row"><select id="ambRoute"></select><button class="btn danger" id="ambBtn">Dispatch</button></div>
+        <label class="s" for="rushBtn">Rush hour</label>
+        <div class="row"><button class="btn go" id="rushBtn" style="flex:1">Trigger rush</button></div>
+        <label class="s" for="rainRoad">Monsoon waterlogging (halves speed and flow)</label>
+        <div class="row"><select id="rainRoad"></select><button class="btn" id="rainBtn">Flood</button></div>
+        <label class="s" for="killNode">P2P node failure</label>
+        <div class="row"><select id="killNode"></select><button class="btn danger" id="killBtn">Kill</button></div>
+        <label class="s" for="fallback">Killed peer falls back to</label>
+        <div class="row"><select id="fallback"><option value="isolated">Isolated AI</option><option value="fixed">Fixed timer</option></select></div>
+      </div>
+      <div class="card"><div class="h"><span>Event log</span></div><div class="feed" id="feed"></div></div>
+    </aside>
+  </main>
+</div>
+<script>window.__DATA__ = /*__DATA__*/null;</script>
+<script>
+(() => {
+"use strict";
+const D = window.__DATA__;
+const K = D.constants, PCU = D.pcu, MIX = D.mix;
+const MODES = ["fixed", "isolated", "p2p"];
+const MODE_LABEL = { fixed: "Fixed timer (30 s)", isolated: "Isolated AI", p2p: "P2P Mesh AI" };
+const MODE_COLOR = { fixed: "#998c74", isolated: "#8a76ad", p2p: "#4b8a83" };
+const PKT = { STATE: "STATE_GOSSIP", PLATOON: "PLATOON", BP: "BACKPRESSURE_WARN", PRI: "PRIORITY_CORRIDOR" };
+const PKT_COLOR = { STATE_GOSSIP: "#9fb0c4", PLATOON: "#4f97a3", BACKPRESSURE_WARN: "#d08a45", PRIORITY_CORRIDOR: "#c94f4a" };
+const HEAT = { free: "#86b874", busy: "#e0a24f", jam: "#cf5a46" };
+const START_CLOCK = 17 * 3600, WINDOW = 600;
+const $ = (id) => document.getElementById(id);
+
+// ------------------------------------------------------------------ utilities
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function poisson(rng, lam) { if (lam <= 0) return 0; const L = Math.exp(-lam); let k = 0, p = 1; do { k++; p *= rng(); } while (p > L); return k - 1; }
+function argmax(idx, key) { let best = null, bv = -Infinity; for (const i of idx) { const v = key(i); if (v > bv) { bv = v; best = i; } } return best; }
+const fmtClock = (t) => { const s = Math.floor(START_CLOCK + t) % 86400; return [s / 3600 | 0, (s / 60 | 0) % 60, s % 60].map(x => String(x).padStart(2, "0")).join(":"); };
+const fmtN = (n) => Math.round(n).toLocaleString("en-IN");
+
+// ------------------------------------------------------------------ graph
+const CLASS_RANK = { connector: 0, tertiary: 1, secondary: 2, primary: 3, trunk: 4, motorway: 5, "": 3 };
+const FLY_H = 9, RAMP = 140;  // flyover deck height (m) and ramp length (m)
+class Graph {
+  constructor(j) {
+    this.j = j; this.mpu = j.mPerUnit || 1; this.real = j.key.endsWith("_osm");
+    this.nodes = new Map(j.nodes.map(n => [n.id, n]));
+    this.links = j.links.map((l, i) => {
+      const g = l.geom, cum = [0];
+      for (let k = 1; k < g.length; k++) cum.push(cum[k - 1] + Math.hypot(g[k][0] - g[k - 1][0], g[k][1] - g[k - 1][1]));
+      let x0 = 1e18, y0 = 1e18, x1 = -1e18, y1 = -1e18; for (const [x, y] of g) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+      return { ...l, i, cum, glen: cum[cum.length - 1] || 1, bbox: [x0, y0, x1, y1], rank: CLASS_RANK[l.cls] ?? 3 };
+    });
+    this.li = new Map(this.links.map(l => [l.id, l.i]));
+    this.kind = (id) => this.nodes.get(id).kind;
+    this.signals = j.nodes.filter(n => n.kind === "signal").map(n => n.id);
+    this.junctions = j.nodes.filter(n => n.kind === "junction").map(n => n.id);
+    const ins = new Map(j.nodes.map(n => [n.id, []]));
+    for (const l of this.links) ins.get(l.dst).push(l.i);
+    this.inLinks = ins;
+    this.neighbors = j.neighbors;
+    this.ods = j.ods.map(o => ({ ...o, routeI: o.route.map(id => this.li.get(id)) }));
+    this.amb = j.ambulanceRoutes.map(a => ({ ...a, routeI: a.route.map(id => this.li.get(id)) }));
+    const groups = new Map();
+    for (const l of this.links) {
+      if (l.cls === "connector") continue;
+      const key = this.real ? l.name : l.road;
+      if (!groups.has(key)) groups.set(key, { key, name: l.name, links: [], len: 0, rank: 0 });
+      const gg = groups.get(key); gg.links.push(l.i); gg.len += l.length; gg.rank = Math.max(gg.rank, l.rank);
+    }
+    let floods = [...groups.values()];
+    if (this.real) floods = floods.filter(f => f.rank >= 3 && f.len > 4000 && !/link$/i.test(f.name)).sort((a, b) => b.len - a.len).slice(0, 45).sort((a, b) => a.name.localeCompare(b.name));
+    this.floods = floods.map(f => ({ ...f, label: this.real ? `${f.name} (${(f.len / 2000).toFixed(0)} km)` : `${f.name} (${f.key.replace("-", " – ")})` }));
+    let x0 = 1e18, y0 = 1e18, x1 = -1e18, y1 = -1e18;
+    for (const n of j.nodes) { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x); y1 = Math.max(y1, n.y); }
+    this.bounds = [x0, y0, x1, y1];
+  }
+  approachName(li) { const l = this.links[li], sn = this.nodes.get(l.src); if (!this.real) return sn.name;
+    if (sn.kind === "signal" && sn.landmark) return `${l.name} from ${sn.name}`;
+    const g = l.geom, a = g[Math.max(0, g.length - 2)], b = g[g.length - 1];   // traffic comes from the opposite of its heading
+    const ang = Math.atan2(-(a[1] - b[1]), a[0] - b[0]) * 180 / Math.PI, dirs = ["east", "north-east", "north", "north-west", "west", "south-west", "south", "south-east"];
+    return `${l.name} from the ${dirs[Math.round(((ang + 360) % 360) / 45) % 8]}`; }
+  shortName(id) { const n = this.nodes.get(id); return n.name.length > 30 ? n.name.slice(0, 29) + "…" : n.name; }
+  elev(l, d) {   // height of a road at distance d along a link: flyovers rise on ramps
+    if (!l.level || l.level < 0) return 0;
+    const L = l.glen * this.mpu, dm = d * this.mpu, r = Math.min(RAMP, L / 3);
+    return FLY_H * Math.min(1, dm / r, (L - dm) / r);
+  }
+}
+
+// ------------------------------------------------------------------ controllers (ports of traffic/optimizer.py + traffic/p2p_mesh.py)
+// WHY records the rule behind each decision so the UI can explain what the AI changed.
+let WHY = null;
+const A = { min: K.MIN_GREEN, max: K.MAX_GREEN, maxRed: K.MAX_RED, gap: K.GAP_PCU, ratio: K.IMBALANCE_RATIO, age: K.AGEING_S };
+function pressure(o, i) { return o.q[i] + o.oldest[i] / A.age; }
+function bestOther(o) { const idx = []; for (let i = 0; i < o.q.length; i++) if (i !== o.cur && o.counts[i] > 0) idx.push(i); return idx.length ? argmax(idx, i => pressure(o, i)) : null; }
+function adaptiveDecide(o) {
+  const cur = o.cur;
+  if (o.elapsed < A.min) return cur;
+  if (o.emg[cur] && o.elapsed < A.max + 30) { WHY = { k: "amb_hold" }; return cur; }
+  const amb = []; o.emg.forEach((e, i) => { if (e && i !== cur) amb.push(i); });
+  if (amb.length) { WHY = { k: "ambulance" }; return argmax(amb, i => o.oldest[i]); }
+  const best = bestOther(o);
+  if (best === null) { if (o.elapsed >= 30) WHY = { k: "nobody_else" }; return cur; }
+  const starving = []; for (let i = 0; i < o.q.length; i++) if (i !== cur && o.counts[i] > 0 && o.red[i] >= A.maxRed) starving.push(i);
+  if (starving.length) { WHY = { k: "fairness" }; return argmax(starving, i => o.red[i]); }
+  if (o.elapsed >= A.max) { WHY = { k: "max" }; return best; }
+  if (o.q[cur] < A.gap) { WHY = { k: "gap" }; return best; }
+  if (o.q[best] > A.ratio * o.q[cur] + 5) { WHY = { k: "imbalance" }; return best; }
+  return cur;
+}
+function fixedDecide(o) { WHY = { k: "fixed" }; return o.elapsed >= 30 ? (o.cur + 1) % o.q.length : o.cur; }
+
+class MeshNode {
+  constructor(id, inLinks, sim) { this.id = id; this.inLinks = inLinks; this.sim = sim; this.platoons = new Map(inLinks.map(l => [l, []])); this.fill = new Map(); this.warned = new Map(); this.locks = new Map(); this.log = []; this.rx = 0; this.tx = 0; }
+  receive(p, t) {
+    this.rx++;
+    if (p.kind === PKT.PLATOON && this.platoons.has(p.link)) this.platoons.get(p.link).push([t + p.eta, p.pcu, p.from]);
+    else if (p.kind === PKT.STATE) this.fill.set(p.link, [p.fill, t + K.STATE_TTL]);
+    else if (p.kind === PKT.BP) { this.warned.set(p.link, t + K.WARN_TTL); this.fill.set(p.link, [p.fill, t + K.STATE_TTL]); }
+    else if (p.kind === PKT.PRI && this.platoons.has(p.link)) {
+      const first = !this.locks.has(p.vid);
+      this.locks.set(p.vid, [p.link, t + p.eta]);
+      if (first && p.from_ < p.route.length && (p.hops || 0) + 1 < K.CORRIDOR_HOPS) {
+        const h = this.sim.nextHop(p.route, p.from_, 8);
+        if (h) return [{ kind: PKT.PRI, from: this.id, to: h.dst, t, link: h.link, eta: p.eta + h.secs + 3, vid: p.vid, route: p.route, from_: h.rest, hops: (p.hops || 0) + 1 }];
+      }
+    }
+    return [];
+  }
+  prune(t) {
+    for (const [vid, lk] of this.locks) if (t - lk[1] > K.LOCK_STALE) this.locks.delete(vid);
+    for (const [l, items] of this.platoons) if (items.length) this.platoons.set(l, items.filter(([eta]) => eta >= t - 2));
+    for (const [l, exp] of this.warned) if (exp < t) this.warned.delete(l);
+    for (const [l, v] of this.fill) if (v[1] < t) this.fill.delete(l);
+  }
+  downBlock(link) { const f = this.fill.get(link); if (!f) return 0; return Math.min(1, Math.max(0, (f[0] - K.FILL_FREE) / (K.FILL_FULL - K.FILL_FREE))); }
+  soon(link, t, h) { let s = 0; for (const [eta, pcu] of this.platoons.get(link) || []) if (eta <= t + h) s += pcu; return s; }
+  decide(t, o, blocked) {
+    const cur = o.cur;
+    let due = null;
+    for (const [link, eta] of this.locks.values()) if (eta - t <= K.PREEMPT_LEAD) { const idx = this.inLinks.indexOf(link); if (idx >= 0 && (!due || eta < due[0] || (eta === due[0] && idx < due[1]))) due = [eta, idx]; }
+    if (due) { const target = due[1]; WHY = { k: "corridor", eta: due[0] - t }; if (target === cur) return cur; return o.elapsed >= K.EMERGENCY_MIN_GREEN ? target : cur; }
+    const soon = this.inLinks.map(l => this.soon(l, t, K.PLATOON_HORIZON));
+    const eff = o.q.map((q, i) => q * (1 - 0.9 * blocked[i]) + K.PLATOON_WEIGHT * soon[i]);
+    const counts = o.counts.map((c, i) => c + (soon[i] > 0 ? 1 : 0));
+    const o2 = { ...o, q: eff, counts };
+    if (o.elapsed >= A.min) {
+      const bo = bestOther(o2);
+      if (blocked[cur] > 0.6 && bo !== null) { WHY = { k: "backpressure", share: blocked[cur] }; return bo; }
+      const arriving = this.soon(this.inLinks[cur], t, K.HOLD_HORIZON);
+      let others = 0; eff.forEach((v, i) => { if (i !== cur && v > others) others = v; });
+      let maxRed = 0; for (const r of o.red) if (r > maxRed) maxRed = r;
+      if (o.elapsed < A.max && blocked[cur] < 0.5 && arriving >= 2 && arriving >= K.HOLD_RATIO * others && !o.emg.some(Boolean) && maxRed < A.maxRed) { WHY = { k: "platoon", pcu: arriving }; return cur; }
+    }
+    return adaptiveDecide(o2);
+  }
+}
+
+// ------------------------------------------------------------------ simulation (port of traffic/city_sim.py)
+const DECISION_KINDS = ["cut", "extended", "imbalance", "fairness", "ambulance", "backpressure", "platoon"];
+class Sim {
+  constructor(g, mode, world) {
+    this.g = g; this.mode = mode; this.world = world; this.t = 0;
+    this.links = g.links.map(l => ({ l, q: [], occ: 0, sf: 1, satf: 1, exit: g.kind(l.dst) === "gateway", credit: 0, nEmg: 0 }));
+    this.exitLinks = this.links.filter(ls => ls.exit);
+    this.nLinks = this.links.length - this.exitLinks.length;
+    this.entry = new Map();
+    this.sig = new Map(g.signals.map(s => [s, { id: s, phases: g.inLinks.get(s), cur: 0, elapsed: 0, ig: 0, pending: 0, credit: 0, lastGreen: g.inLinks.get(s).map(() => 0), state: 0, prev: 0, greenSec: g.inLinks.get(s).map(() => 0), held: false, lastWhy: null }]));
+    this.junc = g.junctions.map(j => g.inLinks.get(j));
+    this.mesh = new Map(g.signals.map(s => [s, new MeshNode(s, g.inLinks.get(s), this)]));
+    this.killed = new Set(); this.ctrl = new Map(g.signals.map(s => [s, mode === "fixed" ? "fixed" : "isolated"]));
+    this.outbox = []; this.sent = { STATE_GOSSIP: 0, PLATOON: 0, BACKPRESSURE_WARN: 0, PRIORITY_CORRIDOR: 0 }; this.dropped = 0;
+    this.done = []; this.spawnLog = []; this.jamLog = []; this.ambDone = []; this.ambActive = new Map(); this.kpi = null;
+    this.doneDelayAll = 0; this.decisions = Object.fromEntries(DECISION_KINDS.map(k => [k, 0])); this.greens = { n: 0, sum: 0, min: 1e9, max: 0 };
+  }
+  usesMesh(n) { return this.mode === "p2p" && !this.killed.has(n); }
+  nextHop(route, from, maxLinks) {
+    let secs = 0;
+    for (let i = from; i < route.length && i < from + maxLinks; i++) {
+      const ls = this.links[route[i]]; secs += ls.l.freeTime / ls.sf;
+      const k = this.g.kind(ls.l.dst);
+      if (k === "signal") return { dst: ls.l.dst, link: route[i], secs, rest: i + 1 };
+      if (k !== "junction") return null;
+    }
+    return null;
+  }
+  send(p) {
+    const logTo = (id, dir) => { const m = this.mesh.get(id); if (!m) return; m.log.push({ t: p.t, dir, p }); if (m.log.length > 120) m.log.splice(0, m.log.length - 120); };
+    if (this.killed.has(p.from) || this.killed.has(p.to)) { this.dropped++; logTo(p.from, "DROP"); return; }
+    this.outbox.push(p); this.sent[p.kind]++; logTo(p.from, "TX"); logTo(p.to, "RX");
+    const m = this.mesh.get(p.from); if (m) m.tx++;
+    if (this.mode === "p2p") this.world.onPacket(p);
+  }
+  room(ls, pcu) { return ls.occ + pcu <= ls.l.capacity || ls.q.length === 0; }
+  giveWay(ls, t) {
+    if (!ls.nEmg || !ls.q.length || ls.q[0].emg) return;
+    for (let i = 0; i < ls.q.length; i++) { const v = ls.q[i]; if (v.ready > t) return; if (v.emg) { ls.q.splice(i, 1); ls.q.unshift(v); return; } }
+  }
+  pop(ls) { const v = ls.q.shift(); ls.occ -= v.pcu; if (v.emg) ls.nEmg--; v.doneFree += ls.l.freeTime; return v; }
+  enter(v, li) {
+    const ls = this.links[li];
+    v.enter = this.t; v.li = li;
+    const tt = ls.l.freeTime / ls.sf;
+    v.ready = Math.max(this.t + tt, ls.q.length ? ls.q[ls.q.length - 1].ready : 0);
+    ls.q.push(v); ls.occ += v.pcu; if (v.emg) ls.nEmg++;
+    if (v.emg && this.mode === "p2p") {
+      const h = this.nextHop(v.route, v.idx, 8); if (!h) return;
+      const src = ls.l.src, sender = (this.sig.has(src) && this.usesMesh(src)) ? src : h.dst;
+      const p = { kind: PKT.PRI, from: sender, to: h.dst, t: this.t, link: h.link, eta: (v.ready - this.t) + h.secs - tt, vid: v.id, route: v.route, from_: h.rest, emg: true };
+      if (sender === h.dst) { if (this.usesMesh(h.dst)) for (const f of this.mesh.get(h.dst).receive(p, this.t)) this.send(f); }
+      else this.send(p);
+    }
+  }
+  spawn(s) {
+    const free = s.route.reduce((a, li) => a + this.g.links[li].freeTime, 0);
+    const v = { id: s.id, kind: s.kind, pcu: PCU[s.kind], route: s.route, idx: 0, spawn: this.t, free, emg: !!s.emg, enter: 0, ready: 0, li: -1, doneFree: 0, label: s.label };
+    if (!this.entry.has(s.route[0])) this.entry.set(s.route[0], []);
+    this.entry.get(s.route[0]).push(v);
+    this.spawnLog.push([this.t, v.pcu]);
+    if (v.emg) this.ambActive.set(v.id, v);
+  }
+  observe(s) {
+    const t = this.t, mesh = this.usesMesh(s.id) ? this.mesh.get(s.id) : null;
+    const o = { cur: s.cur, elapsed: s.elapsed, q: [], counts: [], oldest: [], emg: [], red: [] }, blocked = [];
+    s.phases.forEach((li, i) => {
+      const ls = this.links[li]; this.giveWay(ls, t);
+      const q = ls.q; let pcu = 0, n = 0, amb = false, blk = 0;
+      for (const v of q) { if (v.ready > t) break; pcu += v.pcu; n++; if (v.emg) amb = true; if (mesh) blk += v.pcu * mesh.downBlock(v.route[v.idx + 1]); }
+      o.q.push(pcu); o.counts.push(n); o.oldest.push(q.length && q[0].ready <= t ? t - q[0].ready : 0); o.emg.push(amb); blocked.push(pcu ? blk / pcu : 0);
+      o.red.push(i === s.cur ? 0 : t - s.lastGreen[i]);
+    });
+    return [o, blocked];
+  }
+  recordDecision(s, o, want, why) {
+    const len = s.elapsed, k = why ? why.k : "?";
+    let kind = null;
+    if (k === "ambulance" || k === "corridor") kind = "ambulance";
+    else if (k === "backpressure") kind = "backpressure";
+    else if (k === "fairness") kind = "fairness";
+    else if ((k === "gap" || k === "imbalance") && len < 26) kind = "cut";
+    else if (len > 34) kind = "extended";
+    else if (k === "imbalance") kind = "imbalance";
+    if (kind) this.decisions[kind]++;
+    if (len <= A.max + 30) { this.greens.n++; this.greens.sum += len; this.greens.min = Math.min(this.greens.min, len); this.greens.max = Math.max(this.greens.max, len); }  // skip greens that just rested with nobody else waiting
+    if (this.mode !== "fixed") this.world.onDecision(this, { t: this.t, id: s.id, from: s.phases[s.cur], to: s.phases[want], len, why: k, kind, qFrom: o.q[s.cur], qTo: o.q[want], red: o.red[want], extra: why });
+    s.lastWhy = { t: this.t, k, len, kind };
+  }
+  signalStep(s) {
+    const t = this.t;
+    if (s.ig > 0) { s.ig--; if (s.ig === 0) { s.cur = s.pending; s.elapsed = 0; s.credit = 0; s.held = false; } s.state = -1; return; }
+    const [o, blocked] = this.observe(s);
+    let want; WHY = null;
+    if (this.usesMesh(s.id)) want = this.mesh.get(s.id).decide(t, o, blocked);
+    else want = this.ctrl.get(s.id) === "fixed" ? fixedDecide(o) : adaptiveDecide(o);
+    if (want !== s.cur) { this.recordDecision(s, o, want, WHY); s.ig = K.INTERGREEN; s.pending = want; s.prev = s.cur; s.state = -1; return; }
+    if (WHY && !s.held && (WHY.k === "platoon" || WHY.k === "corridor" || WHY.k === "amb_hold") && this.mode !== "fixed") {
+      s.held = true; if (WHY.k === "platoon") this.decisions.platoon++; else this.decisions.ambulance++;
+      this.world.onDecision(this, { t, id: s.id, from: s.phases[s.cur], to: s.phases[s.cur], len: s.elapsed, why: WHY.k, kind: WHY.k === "platoon" ? "platoon" : "ambulance", qFrom: o.q[s.cur], qTo: o.q[s.cur], extra: WHY, hold: true });
+    }
+    s.state = s.cur; s.lastGreen[s.cur] = t + 1; s.greenSec[s.cur]++;
+    if (s.elapsed >= K.STARTUP_LOST) {
+      const ls = this.links[s.phases[s.cur]], sat = ls.l.sat * ls.satf;
+      s.credit += sat; this.giveWay(ls, t);
+      const sent = new Map(); let blockedNow = false;
+      const mesh = this.usesMesh(s.id);
+      while (ls.q.length && ls.q[0].ready <= t && ls.q[0].pcu <= s.credit + 1e-9) {
+        const v = ls.q[0], nxt = v.route[v.idx + 1];
+        if (!this.room(this.links[nxt], v.pcu)) { blockedNow = true; break; }
+        this.pop(ls); s.credit -= v.pcu; v.idx++;
+        this.enter(v, nxt);
+        if (mesh) { const h = this.nextHop(v.route, v.idx, 6); if (h && h.dst !== s.id) { const key = h.dst + "|" + h.link; const a = sent.get(key); if (a) { a.pcu += v.pcu; a.eta = Math.min(a.eta, h.secs); } else sent.set(key, { dst: h.dst, link: h.link, pcu: v.pcu, eta: h.secs }); } }
+        if (v.emg) this.mesh.get(s.id).locks.delete(v.id);
+      }
+      if (blockedNow || !ls.q.length || ls.q[0].ready > t) s.credit = Math.min(s.credit, sat);
+      for (const a of sent.values()) this.send({ kind: PKT.PLATOON, from: s.id, to: a.dst, t, link: a.link, pcu: Math.round(a.pcu * 10) / 10, eta: Math.round(a.eta * 10) / 10 });
+    }
+    s.elapsed++;
+  }
+  junctionStep(ins) {
+    const t = this.t, n = ins.length, k = t % n;
+    for (let j = 0; j < n; j++) {
+      const ls = this.links[ins[(k + j) % n]];
+      if (!ls.q.length || ls.q[0].ready > t) { ls.credit = 0; continue; }
+      const sat = ls.l.sat * ls.satf; ls.credit += sat; this.giveWay(ls, t);
+      let blocked = false;
+      while (ls.q.length && ls.q[0].ready <= t && ls.q[0].pcu <= ls.credit + 1e-9) {
+        const v = ls.q[0], nxt = v.route[v.idx + 1];
+        if (!this.room(this.links[nxt], v.pcu)) { blocked = true; break; }
+        this.pop(ls); ls.credit -= v.pcu; v.idx++; this.enter(v, nxt);
+      }
+      if (blocked || !ls.q.length || ls.q[0].ready > t) ls.credit = Math.min(ls.credit, sat);
+    }
+  }
+  step(spawns) {
+    const t = this.t;
+    if (this.mode === "p2p") {
+      const inbox = this.outbox; this.outbox = [];
+      for (const p of inbox) { if (this.killed.has(p.to)) continue; for (const f of this.mesh.get(p.to).receive(p, t)) this.send(f); }
+      for (const m of this.mesh.values()) m.prune(t);
+    }
+    for (const s of spawns) this.spawn(s);
+    for (const [li, buf] of this.entry) { const ls = this.links[li]; while (buf.length && this.room(ls, buf[0].pcu)) this.enter(buf.shift(), li); }
+    for (const ls of this.exitLinks) { this.giveWay(ls, t); while (ls.q.length && ls.q[0].ready <= t) {
+      const v = this.pop(ls); const delay = (t - v.spawn) - v.free;
+      this.done.push([t, delay, v.pcu, v.free]); this.doneDelayAll += Math.max(0, delay);
+      if (v.emg) { this.ambDone.push({ t, delay, id: v.id }); this.ambActive.delete(v.id); this.world.onAmbulanceDone(this, v, delay); } } }
+    for (const s of this.sig.values()) this.signalStep(s);
+    for (const ins of this.junc) this.junctionStep(ins);
+    if (this.mode === "p2p" && t % 5 === 0) {
+      for (const [n, s] of this.sig) { if (!this.usesMesh(n)) continue;
+        for (const li of s.phases) { const ls = this.links[li], src = ls.l.src; if (!this.sig.has(src)) continue;
+          const fill = ls.occ / ls.l.capacity; this.send({ kind: fill > K.BACKPRESSURE_LEVEL ? PKT.BP : PKT.STATE, from: n, to: src, t, link: li, fill: Math.round(fill * 100) / 100 }); } }
+    }
+    if (t % 5 === 0) { let jam = 0; for (const ls of this.links) if (!ls.exit && ls.occ >= K.JAM_LEVEL * ls.l.capacity) jam++; this.jamLog.push([t, jam * 5]); }
+    this.t++;
+    if (this.t % 5 === 0) this.updateKpi();
+  }
+  updateKpi() {
+    const t = this.t, from = t - WINDOW;
+    const trim = (arr) => { let k = 0; while (k < arr.length && arr[k][0] < from) k++; if (k) arr.splice(0, k); };
+    trim(this.done); trim(this.spawnLog); trim(this.jamLog);
+    let dsum = 0, dn = 0, donePcu = 0, spawnPcu = 0, jam = 0, free = 0, backlog = 0, veh = 0, inNet = 0;
+    for (const [, d, p, f] of this.done) { dsum += d; dn++; donePcu += p; free += f; }
+    for (const [, p] of this.spawnLog) spawnPcu += p;
+    for (const [, j] of this.jamLog) jam += j;
+    for (const ls of this.links) { veh += ls.q.length; for (const v of ls.q) {
+      const cur = Math.min(t - v.enter, ls.l.freeTime); const d = Math.max(0, (t - v.spawn) - v.doneFree - cur); dsum += d; inNet += d; dn++; free += v.doneFree + cur; } }
+    for (const buf of this.entry.values()) for (const v of buf) { dsum += t - v.spawn; inNet += t - v.spawn; dn++; backlog += v.pcu; }
+    const span = Math.min(WINDOW, Math.max(1, t));
+    const ratio = dsum / Math.max(1, free);
+    const entered = Math.max(0, Math.min(1, 1 - backlog / Math.max(1, spawnPcu)));
+    const jamRatio = jam / (this.nLinks * span);
+    const score = Math.round(1000 * (0.5 * Math.max(0, 1 - ratio / 1.5) + 0.3 * entered + 0.2 * Math.max(0, 1 - 5 * jamRatio)));
+    const amb = this.ambDone.length ? this.ambDone.reduce((a, b) => a + b.delay, 0) / this.ambDone.length : null;
+    this.kpi = { avgDelay: dn ? dsum / dn : 0, thr: donePcu * 3600 / span, score, amb, ambN: this.ambDone.length, ambLive: this.ambActive.size, veh, totalDelay: this.doneDelayAll + inNet };
+  }
+}
+
+// ------------------------------------------------------------------ world: one city, three controllers, identical traffic
+class World {
+  constructor(cityKey, seed) {
+    this.city = cityKey; this.g = new Graph(D.cities[cityKey]); this.seed = seed;
+    this.rng = mulberry32(seed); this.t = 0; this.nextId = 1;
+    this.sims = Object.fromEntries(MODES.map(m => [m, new Sim(this.g, m, this)]));
+    this.rushUntil = -1; this.flooded = new Set(); this.pending = []; this.pulses = []; this.events = []; this.fallback = "isolated";
+    this.ready = false; this.candidates = []; this.aiFeed = []; this.bubbles = [];
+    this.log(`City online: ${this.g.j.name}. ${this.g.signals.length} signal peers, ${this.g.junctions.length} other junctions, ${this.g.links.length} road links.`);
+  }
+  log(text) { this.events.unshift({ t: this.t, text }); if (this.events.length > 40) this.events.length = 40; }
+  step() {
+    const spawns = [];
+    const rushOn = this.t < this.rushUntil;
+    for (const od of this.g.ods) {
+      const mult = rushOn && od.tags.includes(this.g.j.rushTag) ? K.RUSH_MULT : 1;
+      const n = poisson(this.rng, od.vph / 3600 * mult);
+      for (let k = 0; k < n; k++) {
+        let r = this.rng(), kind = MIX[MIX.length - 1][0];
+        for (const [kk, sh] of MIX) { if (r < sh) { kind = kk; break; } r -= sh; }
+        spawns.push({ id: this.nextId++, kind, route: od.routeI });
+      }
+    }
+    for (const p of this.pending) spawns.push({ ...p, id: this.nextId++ });
+    this.pending = [];
+    for (const m of MODES) this.sims[m].step(spawns);
+    if (this.t === this.rushUntil) this.log(`${this.g.j.rushLabel} is over.`);
+    this.t++;
+  }
+  spawnAmbulance(i) { const a = this.g.amb[i]; this.pending.push({ kind: "ambulance", route: a.routeI, emg: true, label: a.label }); this.log(`Ambulance dispatched: ${a.label}`); }
+  rush() { this.rushUntil = this.t + K.RUSH_DURATION; this.log(`${this.g.j.rushLabel}: demand ×${K.RUSH_MULT} for ${K.RUSH_DURATION / 60} min on ${this.g.j.rushTag.toUpperCase()} flows.`); }
+  flood(i) {
+    const f = this.g.floods[i]; const on = !this.flooded.has(i); on ? this.flooded.add(i) : this.flooded.delete(i);
+    for (const s of Object.values(this.sims)) for (const li of f.links) { const ls = s.links[li]; ls.sf = on ? 0.5 : 1; ls.satf = on ? 0.5 : 1; }
+    this.log(on ? `Waterlogging on ${f.name}: speed and flow halved.` : `${f.name} drained.`);
+  }
+  kill(n) {
+    const s = this.sims.p2p; const name = this.g.nodes.get(n).name;
+    if (s.killed.has(n)) { s.killed.delete(n); s.ctrl.set(n, "isolated"); this.log(`Peer ${name} back online, rejoined the mesh.`); }
+    else { s.killed.add(n); s.ctrl.set(n, this.fallback); this.log(`Peer ${name} killed. Falls back to ${this.fallback === "fixed" ? "fixed timer" : "isolated AI"}; neighbours lose its packets.`); }
+  }
+  onPacket(p) {
+    if (!this.ready || view.mode !== "p2p" || view.paused) return;
+    if (!R.visibleNode(p.from) && !R.visibleNode(p.to)) return;
+    if (p.kind === PKT.STATE && Math.random() > 0.3) return;
+    this.pulses.push({ from: p.from, to: p.to, kind: p.kind, born: performance.now() });
+    if (this.pulses.length > 320) this.pulses.splice(0, this.pulses.length - 320);
+  }
+  onAmbulanceDone(sim, v, delay) { if (sim.mode === view.mode && this.ready) this.log(`Ambulance #${v.id} (${v.label || "trip"}) arrived in ${MODE_LABEL[sim.mode]}: ${delay.toFixed(0)} s delay.`); }
+  onDecision(sim, ev) {   // collect AI decisions worth explaining; the UI picks the best few
+    if (!this.ready || sim.mode !== view.mode || !ev.kind) return;
+    const n = this.g.nodes.get(ev.id);
+    let score = { ambulance: 100, backpressure: 80, platoon: 50, extended: 30 + Math.min(30, ev.len - 30), cut: 25 + Math.min(20, 30 - ev.len), fairness: 30, imbalance: 25 }[ev.kind] || 0;
+    if (n.landmark) score += 35;
+    if (view.sel === ev.id) score += 80;
+    if (R.visibleNode(ev.id)) score += R.closeUp() ? 30 : 5;
+    this.candidates.push({ ...ev, score });
+    if (this.candidates.length > 400) this.candidates.splice(0, 200);
+  }
+}
+
+// ------------------------------------------------------------------ explaining AI decisions
+const AI_STYLE = { ambulance: ["#c94f4a", "✚"], backpressure: ["#cf8a3c", "⇥"], platoon: ["#4f97a3", "≋"], extended: ["#5f8f6b", "+"], cut: ["#6a9cbd", "−"], fairness: ["#8a76ad", "⟳"], imbalance: ["#b0896a", "⇄"] };
+function explain(ev) {
+  const g = world.g, at = g.shortName(ev.id), from = g.approachName(ev.from), to = g.approachName(ev.to);
+  const q = (x) => `${Math.round(x)} vehicle${Math.round(x) === 1 ? "" : "s"}`;
+  switch (ev.kind) {
+    case "ambulance": return ev.hold ? `<b>${at}</b>: kept green for an approaching ambulance on ${from}` : `<b>${at}</b>: switched to ${to} early to clear the way for an ambulance`;
+    case "backpressure": return `<b>${at}</b>: stopped sending traffic from ${from} because the road ahead is nearly full (${Math.round((ev.extra?.share || 0.7) * 100)}% blocked), gave green to ${to}`;
+    case "platoon": return `<b>${at}</b>: held green on ${from} for a group of ${Math.round(ev.extra?.pcu || 0)} vehicles a neighbour said is arriving`;
+    case "extended": return `<b>${at}</b>: kept ${from} green for ${ev.len} s (+${ev.len - 30} s vs a fixed timer) to clear a long queue, then switched to ${to}`;
+    case "cut": return `<b>${at}</b>: ended ${from} green after only ${ev.len} s (queue cleared), so ${to} gets it ${30 - ev.len} s sooner (${q(ev.qTo)} waiting)`;
+    case "fairness": return `<b>${at}</b>: gave ${to} its turn after ${Math.round(ev.red)} s on red so no road waits forever`;
+    case "imbalance": return `<b>${at}</b>: switched to ${to} early, ${q(ev.qTo)} waiting vs ${q(ev.qFrom)}`;
+  }
+  return `<b>${at}</b>: changed phase`;
+}
+function whyNow(s) {   // inspector: why is the current green on?
+  if (view.mode === "fixed") return "Fixed timer: every approach gets 30 s in turn, whatever the queues.";
+  const w = s.lastWhy; if (!w) return "";
+  const map = { gap: "the previous green ended once its queue cleared", imbalance: "this queue was much longer than the one being served", max: "the previous green hit the 60 s maximum", fairness: "this approach had waited too long on red", ambulance: "an ambulance needed it", corridor: "an ambulance needed it", backpressure: "the previous approach's traffic had nowhere to go downstream" };
+  return map[w.k] ? `Switched here because ${map[w.k]} (previous green lasted ${w.len} s).` : "";
+}
+
+// ------------------------------------------------------------------ shared view state + camera
+const view = { city: D.defaultCity, mode: "p2p", speed: 10, paused: false, sel: null, w: 0, h: 0, dpr: 1, kind: window.THREE ? "3d" : "2d",
+  // 2D map
+  cx: 0, cy: 0, scale: 1, fitScale: 0, dirty: true,
+  // 3D camera (map units)
+  tx: 0, tz: 0, dist: 60000, pitch: 0.95, yaw: 0.35, fly: null };
+let world = null, seedCounter = 7;
+const metres = () => world.g.mpu;
+
+// ------------------------------------------------------------------ 2D renderer (flat map)
+const R2 = (() => {
+  const staticCanvas = document.createElement("canvas");
+  const W2S = (x, y) => [(x - view.cx) * view.scale + view.w / 2, (y - view.cy) * view.scale + view.h / 2];
+  const S2W = (sx, sy) => [(sx - view.w / 2) / view.scale + view.cx, (sy - view.h / 2) / view.scale + view.cy];
+  const inView = (x, y, pad) => { const [sx, sy] = W2S(x, y); return sx > -pad && sy > -pad && sx < view.w + pad && sy < view.h + pad; };
+  const bboxIn = (b, pad) => { const [x0, y0] = W2S(b[0], b[1]), [x1, y1] = W2S(b[2], b[3]); return x1 > -pad && y1 > -pad && x0 < view.w + pad && y0 < view.h + pad; };
+  const pxPerM = () => view.scale / metres();
+  const laneW = () => 3.5 / metres() * (world.g.real ? 1 : 2.2);
+  const MEDIAN = () => (world.g.real ? 0.5 : 1.5) / metres();
+  const ROAD = { motorway: ["#cfae7e", 2.6], trunk: ["#d6bb8f", 2.2], primary: ["#dfcca8", 1.7], secondary: ["#e6d9bf", 1.2], tertiary: ["#ece2cc", 1], connector: ["#e9dfc9", 0.8], "": ["#ddcba6", 2] };
+  function roadWidth(l) { const lw = laneW() * view.scale, st = ROAD[l.cls] || ROAD[""]; if (!world.g.real) return l.lanes * lw * 2 + 2 * MEDIAN() * view.scale; return Math.max(st[1] * Math.min(1.6, Math.max(0.55, pxPerM() * 25)), l.lanes * lw + MEDIAN() * view.scale); }
+  function strokeLink(x, l, off) {
+    const g = l.geom; x.beginPath();
+    for (let k = 0; k < g.length; k++) { let px = g[k][0], py = g[k][1];
+      if (off) { const p = g[Math.max(0, k - 1)], q = g[Math.min(g.length - 1, k + 1)]; const dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy) || 1; px += dy / L * off; py -= dx / L * off; }
+      const [a, b] = W2S(px, py); k ? x.lineTo(a, b) : x.moveTo(a, b); }
+    x.stroke();
+  }
+  function poly(x, pts) { x.beginPath(); pts.forEach(([px, py], k) => { const [a, b] = W2S(px / metres(), py / metres()); k ? x.lineTo(a, b) : x.moveTo(a, b); }); x.closePath(); x.fill(); }
+  function drawStatic() {
+    const c = staticCanvas, x = c.getContext("2d"), g = world.g;
+    x.setTransform(view.dpr, 0, 0, view.dpr, 0, 0); x.fillStyle = "#ece4cf"; x.fillRect(0, 0, view.w, view.h);
+    if (g.j.radius) { const [cx, cy] = W2S(0, 0); x.fillStyle = "#e3dcc0"; x.beginPath(); x.arc(cx, cy, g.j.radius * view.scale, 0, 7); x.fill(); }
+    const sc = D.scenery && g.real ? D.scenery : null;
+    if (sc) { x.fillStyle = "#c9dbab"; for (const p of sc.park) poly(x, p.pts); x.fillStyle = "#a9cfdc"; for (const w of sc.water) poly(x, w.pts); }
+    const ppm = pxPerM(), vis = g.links.filter(l => bboxIn(l.bbox, 20) && (l.cls !== "connector" || ppm > 0.02));
+    x.lineCap = "round"; x.lineJoin = "round";
+    for (const l of vis) if (l.level < 0) { x.setLineDash([5, 4]); x.strokeStyle = "#7fa9a3"; x.lineWidth = roadWidth(l); strokeLink(x, l, 0); x.setLineDash([]); }
+    const ground = vis.filter(l => l.level === 0).sort((a, b) => a.rank - b.rank);
+    for (const l of ground) { x.strokeStyle = "#bba783"; x.lineWidth = roadWidth(l) + 1.6; strokeLink(x, l, 0); }
+    for (const l of ground) { x.strokeStyle = (ROAD[l.cls] || ROAD[""])[0]; x.lineWidth = roadWidth(l); if (l.cls === "connector") x.setLineDash([3, 4]); strokeLink(x, l, 0); x.setLineDash([]); }
+    for (const l of vis) if (l.level > 0) { x.strokeStyle = "rgba(90,70,40,0.35)"; x.lineWidth = roadWidth(l) + 5; strokeLink(x, l, 0); }
+    for (const l of vis) if (l.level > 0) { x.strokeStyle = "#f7f1e3"; x.lineWidth = roadWidth(l) + 1; strokeLink(x, l, 0); }
+    view.dirty = false;
+  }
+  return {
+    staticCanvas, W2S, S2W, inView, bboxIn, pxPerM, laneW, MEDIAN, strokeLink, roadWidth, ROAD,
+    resize() { staticCanvas.width = Math.round(view.w * view.dpr); staticCanvas.height = Math.round(view.h * view.dpr); view.dirty = true; },
+    fit() { const [x0, y0, x1, y1] = world.g.bounds; const s = Math.min((view.w - 80) / (x1 - x0), (view.h - 150) / (y1 - y0)); view.scale = view.fitScale = s; view.cx = (x0 + x1) / 2; view.cy = (y0 + y1) / 2 - 12 / s; view.dirty = true; },
+    zoomAt(f, sx, sy) { const [wx, wy] = S2W(sx, sy); view.scale = Math.max(view.fitScale * 0.7, Math.min(view.fitScale * 400, view.scale * f)); view.cx = wx - (sx - view.w / 2) / view.scale; view.cy = wy - (sy - view.h / 2) / view.scale; view.dirty = true; },
+    drawStatic,
+  };
+})();
+
+// ------------------------------------------------------------------ 3D renderer (Ghibli diorama)
+const R3 = (() => {
+  if (!window.THREE) return null;
+  const T = window.THREE;
+  let renderer, scene, camera, roadMesh, roadColors, linkRanges, vehMesh, ambMesh, lampMesh, poleMesh, sigPoints, pulsePoints, cloudGroup, built = null;
+  const tmpM = new T.Matrix4(), tmpQ = new T.Quaternion(), tmpS = new T.Vector3(), tmpP = new T.Vector3(), tmpC = new T.Color(), UP = new T.Vector3(0, 1, 0);
+  const MAXV = 24000;
+  const softTex = (draw, size = 128) => { const c = document.createElement("canvas"); c.width = c.height = size; draw(c.getContext("2d"), size); const t = new T.CanvasTexture(c); return t; };
+  function init() {
+    const canvas = $("gl");
+    renderer = new T.WebGLRenderer({ canvas, antialias: true, logarithmicDepthBuffer: true });
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    scene = new T.Scene();
+    scene.background = softTex((x, s) => { const g = x.createLinearGradient(0, 0, 0, s); g.addColorStop(0, "#9cc8e0"); g.addColorStop(0.55, "#cfe3e6"); g.addColorStop(1, "#f6e6c4"); x.fillStyle = g; x.fillRect(0, 0, s, s); }, 256);
+    scene.fog = new T.Fog(0xf0e2c3, 1000, 100000);
+    camera = new T.PerspectiveCamera(45, 1, 2, 400000);
+    scene.add(new T.HemisphereLight(0xfff1d6, 0x7f9a66, 0.62));
+    const sun = new T.DirectionalLight(0xffe2b8, 0.42); sun.position.set(-0.6, 1, 0.4); scene.add(sun);
+  }
+  function clearCity() { if (!built) return; scene.remove(built); built.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.dispose()); }); built = null; }
+  function roadMaterial() {
+    return new T.ShaderMaterial({
+      uniforms: { uK: { value: 0.001 }, uMinPx: { value: 1.6 }, fogColor: { value: new T.Color(0xf0e2c3) }, fogNear: { value: 1000 }, fogFar: { value: 100000 } },
+      vertexShader: `attribute vec2 aDir; attribute float aOff; attribute float aW; attribute vec3 color; varying vec3 vColor; varying float vDist;
+        uniform float uK; uniform float uMinPx;
+        #include <common>
+        #include <logdepthbuf_pars_vertex>
+        void main(){ vec3 p = position; float d = length(cameraPosition - p); float minW = uMinPx * d * uK; float s = max(1.0, minW / aW);
+          p.x += aDir.x * aOff * s; p.z += aDir.y * aOff * s; p.y += min(s, 60.0) * 0.02;
+          vColor = color; vec4 mv = modelViewMatrix * vec4(p, 1.0); vDist = -mv.z; gl_Position = projectionMatrix * mv;
+          #include <logdepthbuf_vertex>
+        }`,
+      fragmentShader: `varying vec3 vColor; varying float vDist; uniform vec3 fogColor; uniform float fogNear; uniform float fogFar;
+        #include <logdepthbuf_pars_fragment>
+        void main(){
+          #include <logdepthbuf_fragment>
+          float f = smoothstep(fogNear, fogFar, vDist); gl_FragColor = vec4(mix(vColor, fogColor, f * 0.85), 1.0); }`,
+      side: T.DoubleSide,
+    });
+  }
+  const BASE = { motorway: 0x9b7d5c, trunk: 0xa88a66, primary: 0xb79c79, secondary: 0xc6ae8e, tertiary: 0xd2bfa2, connector: 0xd2bfa2, "": 0xb79c79 };
+  function build() {
+    clearCity(); built = new T.Group(); scene.add(built);
+    const g = world.g, mpu = g.mpu, real = g.real, laneM = real ? 3.5 : 6.5, medM = real ? 0.6 : 2;
+    const R = (g.j.radius || Math.max(g.bounds[2] - g.bounds[0], g.bounds[3] - g.bounds[1]) * mpu) * 1.15;
+    // ground: painted grass texture
+    const grass = softTex((x, s) => { x.fillStyle = "#9dbb7c"; x.fillRect(0, 0, s, s); const r = mulberry32(3);
+      for (let i = 0; i < 900; i++) { const c = ["#93b373", "#a9c488", "#8cad6c", "#b2c991", "#98b777"][i % 5]; x.fillStyle = c; x.globalAlpha = 0.5; x.beginPath(); x.ellipse(r() * s, r() * s, 4 + r() * 18, 3 + r() * 10, r() * 3, 0, 7); x.fill(); } }, 256);
+    grass.wrapS = grass.wrapT = T.RepeatWrapping; grass.repeat.set(R / 900, R / 900);
+    const ground = new T.Mesh(new T.CircleGeometry(R * 1.6, 96), new T.MeshLambertMaterial({ map: grass }));
+    ground.rotation.x = -Math.PI / 2; built.add(ground);
+    const cx = (g.bounds[0] + g.bounds[2]) / 2 * mpu, cz = (g.bounds[1] + g.bounds[3]) / 2 * mpu;
+    if (!real) ground.position.set(cx, 0, cz);
+    // lakes and parks
+    if (real && D.scenery) {
+      const shapes = (list) => list.map(p => new T.Shape(p.pts.map(([x, y]) => new T.Vector2(x, -y))));
+      for (const [list, col, y] of [[D.scenery.park, 0x9cbf7c, 0.3], [D.scenery.water, 0x8fc4d6, 0.5]]) {
+        const geo = new T.ShapeGeometry(shapes(list)); geo.rotateX(-Math.PI / 2); const m = new T.Mesh(geo, new T.MeshLambertMaterial({ color: col })); m.position.y = y; built.add(m);
+      }
+    }
+    // roads: ribbons that stay at least ~1.6 px wide at any distance (custom shader)
+    const pos = [], dir = [], off = [], wid = [], col = [], idx = []; linkRanges = new Array(g.links.length);
+    const pillars = [];
+    for (const l of g.links) {
+      if (l.cls === "connector") { linkRanges[l.i] = null; continue; }
+      const pts = l.geom, start = pos.length / 3, w = medM + l.lanes * laneM;
+      const base = new T.Color(l.level < 0 ? 0x5f9a96 : l.level > 0 ? 0xeee3cc : (BASE[l.cls] ?? BASE[""]));
+      for (let k = 0; k < pts.length; k++) {
+        const p = pts[Math.max(0, k - 1)], q = pts[Math.min(pts.length - 1, k + 1)]; const dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy) || 1;
+        const nx = dy / L, nz = -dx / L;    // left of travel
+        const x = pts[k][0] * mpu, z = pts[k][1] * mpu, y = 1.2 + g.elev(l, l.cum[k]) + (l.level < 0 ? -0.6 : 0);
+        for (const o of [medM, w]) { pos.push(x, y, z); dir.push(nx, nz); off.push(o); wid.push(w); col.push(base.r, base.g, base.b); }
+        if (k > 0) { const a = start + (k - 1) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+      }
+      if (l.level > 0) { const Lm = l.glen * mpu; for (let d = RAMP * 0.6; d < Lm - RAMP * 0.6; d += 45) { const pa = R2pointAt(l, d / mpu); pillars.push([pa[0] * mpu + pa[3] * w * 0.5, pa[1] * mpu - pa[2] * w * 0.5, g.elev(l, d / mpu)]); } }
+      linkRanges[l.i] = [start, pos.length / 3, base];
+    }
+    const geo = new T.BufferGeometry();
+    geo.setAttribute("position", new T.Float32BufferAttribute(pos, 3));
+    geo.setAttribute("aDir", new T.Float32BufferAttribute(dir, 2));
+    geo.setAttribute("aOff", new T.Float32BufferAttribute(off, 1));
+    geo.setAttribute("aW", new T.Float32BufferAttribute(wid, 1));
+    roadColors = new T.Float32BufferAttribute(col, 3); geo.setAttribute("color", roadColors);
+    geo.setIndex(idx); geo.computeBoundingSphere();
+    roadMesh = new T.Mesh(geo, roadMaterial()); roadMesh.frustumCulled = false; built.add(roadMesh);
+    // flyover pillars
+    if (pillars.length) { const pm = new T.InstancedMesh(new T.CylinderGeometry(1.1, 1.4, 1, 7), new T.MeshLambertMaterial({ color: 0xe8dcc6 }), pillars.length);
+      pillars.forEach(([x, z, h], i) => { tmpM.compose(tmpP.set(x, h / 2, z), tmpQ.identity(), tmpS.set(1, h, 1)); pm.setMatrixAt(i, tmpM); }); built.add(pm); }
+    // trees and little houses on a grid of cells, avoiding roads and lakes
+    const cell = real ? 220 : 30, occ = new Set();
+    for (const l of g.links) for (const [x, y] of l.geom) occ.add(Math.floor(x * mpu / cell) + ":" + Math.floor(y * mpu / cell));
+    if (real && D.scenery) for (const w of D.scenery.water) { let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const [x, y] of w.pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+      for (let a = Math.floor(x0 / cell); a <= Math.floor(x1 / cell); a++) for (let b = Math.floor(y0 / cell); b <= Math.floor(y1 / cell); b++) occ.add(a + ":" + b + ":w"); }
+    const rnd = mulberry32(42), trees = [], houses = [];
+    const span = real ? R / 1.15 : R * 0.6, N = real ? 26000 : 2500, NU = real ? 60000 : 0, URBAN = 16000;
+    for (let i = 0; i < N + NU; i++) {   // countryside everywhere + a dense layer over the urban core
+      const ang = rnd() * Math.PI * 2, rr = Math.sqrt(rnd()) * (i < N ? span : URBAN), x = (real ? 0 : cx) + Math.cos(ang) * rr, z = (real ? 0 : cz) + Math.sin(ang) * rr;
+      const key = Math.floor(x / cell) + ":" + Math.floor(z / cell); if (occ.has(key + ":w")) continue;
+      const nearRoad = occ.has(key);
+      const urban = real ? Math.exp(-rr / 9000) : 0.4;
+      if (nearRoad && rnd() < 0.5 + urban * 0.4) { houses.push([x + (rnd() - 0.5) * cell * 0.6, z + (rnd() - 0.5) * cell * 0.6, rnd()]); continue; }
+      if (!nearRoad || rnd() < 0.3) trees.push([x, z, rnd()]);
+    }
+    const treeGeo = new T.IcosahedronGeometry(1, 0);
+    const tm = new T.InstancedMesh(treeGeo, new T.MeshPhongMaterial({ flatShading: true, shininess: 0, specular: 0x000000 }), trees.length);
+    const TC = [0x6f9a5e, 0x7fa86a, 0x5e8b55, 0x8bb173, 0x678f58];
+    trees.forEach(([x, z, r], i) => { const s = (real ? 10 : 2.5) * (0.7 + r * 0.9); tmpM.compose(tmpP.set(x, s * 0.9, z), tmpQ.setFromAxisAngle(UP, r * 6), tmpS.set(s, s * 1.15, s)); tm.setMatrixAt(i, tmpM); tm.setColorAt(i, tmpC.setHex(TC[i % TC.length])); });
+    built.add(tm);
+    const hb = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), new T.MeshPhongMaterial({ flatShading: true, shininess: 0, specular: 0x000000 }), houses.length);
+    const roof = new T.InstancedMesh(new T.ConeGeometry(0.78, 0.55, 4), new T.MeshPhongMaterial({ flatShading: true, shininess: 0, specular: 0x000000 }), houses.length);
+    const WC = [0xf4e8d2, 0xefe0c4, 0xf7eee0, 0xe9dcc6], RC = [0xc0634a, 0xb5573f, 0xcf7a52, 0x9c5a46, 0x6f8fa6];
+    houses.forEach(([x, z, r], i) => { const s = (real ? 14 : 3) * (0.8 + r * 0.7), h = s * (0.6 + r * 0.6), q = tmpQ.setFromAxisAngle(UP, r * 3.1);
+      tmpM.compose(tmpP.set(x, h / 2, z), q, tmpS.set(s, h, s * 0.85)); hb.setMatrixAt(i, tmpM); hb.setColorAt(i, tmpC.setHex(WC[i % 4]));
+      tmpM.compose(tmpP.set(x, h + s * 0.27, z), tmpQ.setFromAxisAngle(UP, r * 3.1 + Math.PI / 4), tmpS.set(s * 0.95, s, s * 0.95)); roof.setMatrixAt(i, tmpM); roof.setColorAt(i, tmpC.setHex(RC[(i * 7) % 5])); });
+    built.add(hb, roof);
+    // clouds
+    cloudGroup = new T.Group(); const cm = new T.MeshPhongMaterial({ color: 0xffffff, flatShading: true, shininess: 0, specular: 0x000000, transparent: true, opacity: 0.93, emissive: 0x4a463e });
+    const cr = mulberry32(9);
+    for (let i = 0; i < (real ? 34 : 8); i++) { const cl = new T.Group(); const s = real ? 900 + cr() * 900 : 60 + cr() * 50;
+      for (let k = 0; k < 6; k++) { const b = new T.Mesh(new T.IcosahedronGeometry(s * (0.5 + cr() * 0.6), 1), cm); b.position.set((k - 2.5) * s * 0.55, cr() * s * 0.3, (cr() - 0.5) * s * 0.6); cl.add(b); }
+      const a = cr() * 7, rr = Math.sqrt(cr()) * span; cl.position.set((real ? 0 : cx) + Math.cos(a) * rr, real ? 3500 + cr() * 2500 : 250 + cr() * 150, (real ? 0 : cz) + Math.sin(a) * rr); cl.userData.v = 0.4 + cr(); cloudGroup.add(cl); }
+    built.add(cloudGroup);
+    // vehicles, ambulances, signals, packets
+    vehMesh = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), new T.MeshLambertMaterial(), MAXV); vehMesh.frustumCulled = false; vehMesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
+    vehMesh.setColorAt(0, tmpC.setHex(0xffffff)); vehMesh.count = 0; built.add(vehMesh);   // colour buffer must be sized before count drops to 0
+    ambMesh = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), new T.MeshBasicMaterial({ color: 0xd0453f }), 64); ambMesh.count = 0; ambMesh.frustumCulled = false; built.add(ambMesh);
+    const ns = g.signals.length; let heads = 0; for (const id of g.signals) heads += g.inLinks.get(id).length;
+    lampMesh = new T.InstancedMesh(new T.SphereGeometry(1, 10, 8), new T.MeshBasicMaterial(), heads); lampMesh.frustumCulled = false;
+    poleMesh = new T.InstancedMesh(new T.CylinderGeometry(0.25, 0.3, 1, 6), new T.MeshLambertMaterial({ color: 0x6d6556 }), heads); poleMesh.frustumCulled = false;
+    let hi = 0; built.userData.heads = [];
+    for (const id of g.signals) g.inLinks.get(id).forEach((li, i) => { const l = g.links[li]; const tr = real ? 8 : 22; const pa = R2pointAt(l, l.glen - tr / mpu); const o = medM + l.lanes * laneM + 2;
+      const x = pa[0] * mpu + pa[3] * o, z = pa[1] * mpu - pa[2] * o, y0 = g.elev(l, l.glen - tr / mpu); built.userData.heads.push([id, i, x, z, y0]);
+      tmpM.compose(tmpP.set(x, y0 + 3, z), tmpQ.identity(), tmpS.set(1, 6, 1)); poleMesh.setMatrixAt(hi, tmpM); hi++; });
+    for (let k = 0; k < heads; k++) lampMesh.setColorAt(k, tmpC.setHex(0xd0584b));
+    built.add(lampMesh, poleMesh);
+    const sp = new Float32Array(ns * 3), sc = new Float32Array(ns * 3);
+    g.signals.forEach((id, i) => { const n = g.nodes.get(id); sp.set([n.x * mpu, 12, n.y * mpu], i * 3); });
+    const sg = new T.BufferGeometry(); sg.setAttribute("position", new T.BufferAttribute(sp, 3)); sg.setAttribute("color", new T.BufferAttribute(sc, 3));
+    sigPoints = new T.Points(sg, new T.PointsMaterial({ size: 6, sizeAttenuation: false, vertexColors: true, map: dotTex(), transparent: true, alphaTest: 0.3, depthWrite: false })); sigPoints.frustumCulled = false; built.add(sigPoints);
+    const pg = new T.BufferGeometry(); pg.setAttribute("position", new T.BufferAttribute(new Float32Array(400 * 3), 3)); pg.setAttribute("color", new T.BufferAttribute(new Float32Array(400 * 3), 3));
+    pulsePoints = new T.Points(pg, new T.PointsMaterial({ size: 7, sizeAttenuation: false, vertexColors: true, map: dotTex(), transparent: true, alphaTest: 0.3, depthWrite: false })); pulsePoints.frustumCulled = false; built.add(pulsePoints);
+    built.userData.R = R; built.userData.cx = cx; built.userData.cz = cz;
+  }
+  let _dot = null;
+  function dotTex() { if (_dot) return _dot; _dot = softTex((x, s) => { const g = x.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2); g.addColorStop(0, "#fff"); g.addColorStop(0.6, "#fff"); g.addColorStop(0.75, "rgba(255,255,255,0.5)"); g.addColorStop(1, "rgba(255,255,255,0)"); x.fillStyle = g; x.fillRect(0, 0, s, s); }, 64); return _dot; }
+  function placeCamera() {
+    const d = view.dist, p = view.pitch, y = view.yaw;
+    camera.position.set(view.tx + d * Math.sin(p) * Math.sin(y), d * Math.cos(p), view.tz + d * Math.sin(p) * Math.cos(y));
+    camera.lookAt(view.tx, 0, view.tz);
+    scene.fog.near = d * 1.6; scene.fog.far = d * 9;
+    const u = roadMesh.material.uniforms; u.uK.value = 2 * Math.tan(camera.fov * Math.PI / 360) / Math.max(1, view.h); u.fogNear.value = scene.fog.near; u.fogFar.value = scene.fog.far;
+  }
+  let heatAt = 0;
+  const cFree = new T.Color(HEAT.free), cBusy = new T.Color(HEAT.busy), cJam = new T.Color(HEAT.jam), cFlood = new T.Color(0x7fb0d6);
+  function updateHeat(sim) {   // tint every road by how full it is (soft greens to terracotta)
+    const g = world.g, arr = roadColors.array, flooded = new Set(); for (const i of world.flooded) for (const li of g.floods[i].links) flooded.add(li);
+    const corridor = new Set(); if (view.mode === "p2p") for (const m of sim.mesh.values()) for (const [li] of m.locks.values()) corridor.add(li);
+    for (const ls of sim.links) { const r = linkRanges[ls.l.i]; if (!r) continue; const f = ls.occ / ls.l.capacity;
+      tmpC.copy(r[2]);
+      if (f > 0.3) { const tgt = f > K.BACKPRESSURE_LEVEL ? cJam : f > 0.55 ? cBusy : cFree; tmpC.lerp(tgt, Math.min(1, 0.55 + f * 0.45)); }
+      if (flooded.has(ls.l.i)) tmpC.lerp(cFlood, 0.7);
+      if (corridor.has(ls.l.i)) tmpC.setHex(0xd8574d);
+      for (let v = r[0]; v < r[1]; v++) { arr[v * 3] = tmpC.r; arr[v * 3 + 1] = tmpC.g; arr[v * 3 + 2] = tmpC.b; } }
+    roadColors.needsUpdate = true;
+  }
+  const VLEN = { motorcycle: 2.2, bicycle: 1.9, car: 4.5, bus: 11, truck: 9, ambulance: 5.5 }, VWID = { motorcycle: 0.9, bicycle: 0.8, car: 1.9, bus: 2.6, truck: 2.5, ambulance: 2.1 }, VH = { motorcycle: 1.4, bicycle: 1.3, car: 1.6, bus: 3.2, truck: 3.0, ambulance: 2.4 };
+  const CARC = [0xf3e2c4, 0xd98f6e, 0x8eb4c9, 0xe9c46a, 0xb9c7a5, 0xe8eef2], KC = { motorcycle: 0x5e9fb0, bicycle: 0x7fb3a6, bus: 0xd9a441, truck: 0xb5694a };
+  function updateVehicles(sim, tf) {
+    const g = world.g, mpu = g.mpu, real = g.real, laneM = real ? 3.5 : 6.5, medM = real ? 0.6 : 2, vs = real ? 1 : 3, near = view.dist < (real ? 9000 : 4000);
+    let n = 0, na = 0; const r2 = (view.dist * 1.6) ** 2;
+    if (near) for (const ls of sim.links) {
+      if (!ls.q.length) continue; const l = ls.l; const mx = (l.bbox[0] + l.bbox[2]) / 2 * mpu - view.tx, mz = (l.bbox[1] + l.bbox[3]) / 2 * mpu - view.tz; if (mx * mx + mz * mz > r2 + (l.glen * mpu) ** 2) continue;
+      const lanes = l.lanes, tr = real ? 8 : 22, s0 = g.kind(l.src) === "gateway" ? 0 : tr / mpu, s1 = g.kind(l.dst) === "gateway" ? 0 : tr / mpu, L = Math.max(1, l.glen - s0 - s1);
+      const tail = new Array(lanes).fill(0); let k = 0;
+      const put = (v, d, len) => { const pa = R2pointAt(l, s0 + d), o = medM + ((v.id % lanes) + 0.5) * laneM; const x = pa[0] * mpu + pa[3] * o, z = pa[1] * mpu - pa[2] * o;
+        const h = VH[v.kind] * vs, y = 1.2 + g.elev(l, s0 + d) + h / 2; tmpQ.setFromAxisAngle(UP, Math.atan2(-pa[3], pa[2]) + Math.PI / 2);
+        tmpM.compose(tmpP.set(x, y, z), tmpQ, tmpS.set(len * mpu, h, VWID[v.kind] * vs));
+        if (v.emg) { if (na < 64) ambMesh.setMatrixAt(na++, tmpM); } else if (n < MAXV) { vehMesh.setMatrixAt(n, tmpM); vehMesh.setColorAt(n, tmpC.setHex(v.kind === "car" ? CARC[v.id % CARC.length] : KC[v.kind])); n++; } };
+      for (; k < ls.q.length; k++) { const v = ls.q[k]; if (v.ready > tf) break; const lane = v.id % lanes, len = VLEN[v.kind] * vs / mpu; const d = L - tail[lane] - len / 2; tail[lane] += Math.max(len + 0.8 / mpu, 7 * vs / mpu * v.pcu * 0.85); put(v, Math.max(len / 2, d), len); }
+      for (; k < ls.q.length; k++) { const v = ls.q[k], lane = v.id % lanes, len = VLEN[v.kind] * vs / mpu; const p = Math.min(1, Math.max(0, (tf - v.enter) / Math.max(0.1, v.ready - v.enter))); put(v, Math.max(len / 2, Math.min(p * L, L - tail[lane] - len / 2 - 1)), len); }
+    }
+    vehMesh.count = n; vehMesh.instanceMatrix.needsUpdate = true; if (vehMesh.instanceColor) vehMesh.instanceColor.needsUpdate = true;
+    ambMesh.count = na; ambMesh.instanceMatrix.needsUpdate = true; ambMesh.material.color.setHex(Math.floor(performance.now() / 180) % 2 ? 0xd0453f : 0xfff8ec);
+  }
+  function updateSignals(sim, now) {
+    const g = world.g, heads = built.userData.heads, near = view.dist < (g.real ? 5000 : 3000);
+    lampMesh.visible = poleMesh.visible = near;
+    if (near) heads.forEach(([id, i, x, z, y0], k) => { const s = sim.sig.get(id); const col = s.state === i ? 0x5fb36a : (s.state === -1 && s.prev === i && s.ig > 2) ? 0xe2a93b : 0xd0584b;
+      tmpM.compose(tmpP.set(x, y0 + 6.5, z), tmpQ.identity(), tmpS.set(1.1, 1.1, 1.1)); lampMesh.setMatrixAt(k, tmpM); lampMesh.setColorAt(k, tmpC.setHex(col)); });
+    lampMesh.instanceMatrix.needsUpdate = true; if (lampMesh.instanceColor) lampMesh.instanceColor.needsUpdate = true;
+    const c = sigPoints.geometry.attributes.color.array, ring = new T.Color(MODE_COLOR[view.mode]), red = new T.Color(0xc94f4a), white = new T.Color(0xfffaf0);
+    g.signals.forEach((id, i) => { let cc = ring; if (sim.killed.has(id)) cc = red; else if (view.mode === "p2p" && sim.mesh.get(id).locks.size) cc = Math.floor(now / 160) % 2 ? red : white; c[i * 3] = cc.r; c[i * 3 + 1] = cc.g; c[i * 3 + 2] = cc.b; });
+    sigPoints.geometry.attributes.color.needsUpdate = true; sigPoints.material.size = near ? 0 : (view.dist > 30000 ? 4 : 6);
+  }
+  function updatePulses(now) {
+    const g = world.g, mpu = g.mpu, pa = pulsePoints.geometry.attributes.position.array, ca = pulsePoints.geometry.attributes.color.array; let n = 0; const keep = [];
+    if (view.mode === "p2p") for (const p of world.pulses) { const age = (now - p.born) / 800; if (age >= 1) continue; keep.push(p); if (n >= 400) continue;
+      const a = g.nodes.get(p.from), b = g.nodes.get(p.to); const x = (a.x + (b.x - a.x) * age) * mpu, z = (a.y + (b.y - a.y) * age) * mpu; const L = Math.hypot(b.x - a.x, b.y - a.y) * mpu;
+      pa.set([x, 15 + Math.sin(age * Math.PI) * Math.min(400, L * 0.25), z], n * 3); tmpC.set(PKT_COLOR[p.kind]); ca.set([tmpC.r, tmpC.g, tmpC.b], n * 3); n++; }
+    world.pulses = keep; pulsePoints.geometry.setDrawRange(0, n); pulsePoints.geometry.attributes.position.needsUpdate = true; pulsePoints.geometry.attributes.color.needsUpdate = true;
+  }
+  return {
+    init, build,
+    resize() { if (!renderer) return; renderer.setSize(view.w, view.h, false); camera.aspect = view.w / Math.max(1, view.h); camera.updateProjectionMatrix(); },
+    fit() { const g = world.g, mpu = g.mpu; const [x0, y0, x1, y1] = g.bounds; view.tx = (x0 + x1) / 2 * mpu; view.tz = (y0 + y1) / 2 * mpu + (g.real ? 6000 : 40); view.dist = Math.max(x1 - x0, y1 - y0) * mpu * (g.real ? 0.95 : 1.25); view.pitch = 0.9; view.yaw = 0.3; view.fly = null; },
+    flyTo(x, z, dist) { view.fly = { t0: performance.now(), from: [view.tx, view.tz, view.dist, view.pitch], to: [x, z, dist, 1.0] }; },
+    project(x, y, z) { tmpP.set(x, y, z).project(camera); return [(tmpP.x + 1) / 2 * view.w, (1 - tmpP.y) / 2 * view.h, tmpP.z < 1 && tmpP.z > -1]; },
+    groundAt(sx, sy) { const v = new T.Vector3((sx / view.w) * 2 - 1, -(sy / view.h) * 2 + 1, 0.5).unproject(camera).sub(camera.position).normalize(); if (v.y >= -1e-4) return null; const t = -camera.position.y / v.y; return [camera.position.x + v.x * t, camera.position.z + v.z * t]; },
+    render(tf, now) {
+      if (view.fly) { const f = Math.min(1, (now - view.fly.t0) / 1300), e = f < 0.5 ? 2 * f * f : 1 - (-2 * f + 2) ** 2 / 2; const [a, b] = [view.fly.from, view.fly.to];
+        view.tx = a[0] + (b[0] - a[0]) * e; view.tz = a[1] + (b[1] - a[1]) * e; view.dist = Math.exp(Math.log(a[2]) + (Math.log(b[2]) - Math.log(a[2])) * e); view.pitch = a[3] + (b[3] - a[3]) * e; if (f >= 1) view.fly = null; }
+      placeCamera();
+      const sim = world.sims[view.mode];
+      if (now - heatAt > 400) { updateHeat(sim); heatAt = now; }
+      updateVehicles(sim, tf); updateSignals(sim, now); updatePulses(now);
+      for (const c of cloudGroup.children) { c.position.x += c.userData.v * (world.g.real ? 6 : 0.4); if (c.position.x > built.userData.cx + built.userData.R) c.position.x -= 2 * built.userData.R; }
+      renderer.render(scene, camera);
+    },
+    clear: clearCity,
+  };
+})();
+function R2pointAt(l, d) {   // point + unit direction at distance d (map units) along a link
+  const g = l.geom, cum = l.cum; d = Math.max(0, Math.min(l.glen, d));
+  let lo = 0, hi = cum.length - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cum[mid] <= d) lo = mid; else hi = mid; }
+  const seg = (cum[hi] - cum[lo]) || 1, f = (d - cum[lo]) / seg;
+  const ux = (g[hi][0] - g[lo][0]) / seg, uy = (g[hi][1] - g[lo][1]) / seg;
+  return [g[lo][0] + (g[hi][0] - g[lo][0]) * f, g[lo][1] + (g[hi][1] - g[lo][1]) * f, ux, uy];
+}
+
+// ------------------------------------------------------------------ renderer facade
+const R = {
+  is3d: () => view.kind === "3d" && R3,
+  // screen position of a map point (map units), or null if off screen
+  screen(x, y, h = 0) { if (R.is3d()) { const m = metres(); const [sx, sy, ok] = R3.project(x * m, h, y * m); return ok && sx > -40 && sy > -40 && sx < view.w + 40 && sy < view.h + 40 ? [sx, sy] : null; } const [sx, sy] = R2.W2S(x, y); return sx > -40 && sy > -40 && sx < view.w + 40 && sy < view.h + 40 ? [sx, sy] : null; },
+  visibleNode(id) { const n = world.g.nodes.get(id); if (!n) return false; if (R.is3d()) { const m = metres(); const dx = n.x * m - view.tx, dz = n.y * m - view.tz; return dx * dx + dz * dz < (view.dist * 1.3) ** 2; } return R2.inView(n.x, n.y, 60); },
+  closeUp() { return R.is3d() ? view.dist < (world.g.real ? 9000 : 4000) : (!world.g.real || R2.pxPerM() > 0.12); },
+  pxPerM() { if (R.is3d()) return view.h / (2 * view.dist * Math.tan(22.5 * Math.PI / 180)); return R2.pxPerM(); },
+  fit() { R2.fit(); if (R3) R3.fit(); },
+  flyTo(x, y) { const m = metres(); if (R.is3d()) R3.flyTo(x * m, y * m, world.g.real ? 1800 : 250); else { view.cx = x; view.cy = y; view.scale = world.g.real ? 0.5 * m : view.fitScale * 2.5; view.dirty = true; } },
+  zoom(f, sx, sy) { if (R.is3d()) { const p = R3.groundAt(sx, sy); const nd = Math.max(world.g.real ? 120 : 30, Math.min(world.g.real ? 160000 : 6000, view.dist / f)); if (p) { const k = 1 - nd / view.dist; view.tx += (p[0] - view.tx) * k; view.tz += (p[1] - view.tz) * k; } view.dist = nd; view.fly = null; } else R2.zoomAt(f, sx, sy); },
+};
+
+// ------------------------------------------------------------------ 2D dynamic drawing
+function draw2d(tf, now) {
+  if (view.dirty) R2.drawStatic();
+  const c = $("map"), x = c.getContext("2d"), g = world.g, sim = world.sims[view.mode];
+  x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, c.width, c.height); x.drawImage(R2.staticCanvas, 0, 0);
+  x.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  const ppm = R2.pxPerM(), lw = R2.laneW() * view.scale, closeUp = R.closeUp();
+  x.lineCap = "round"; x.lineJoin = "round";
+  for (const i of world.flooded) for (const li of g.floods[i].links) { const l = g.links[li]; if (!R2.bboxIn(l.bbox, 20)) continue; x.strokeStyle = "rgba(106,156,189,0.5)"; x.lineWidth = Math.max(6, R2.roadWidth(l) + 6); R2.strokeLink(x, l, 0); }
+  for (const ls of sim.links) { if (ls.exit) continue; const f = ls.occ / ls.l.capacity; if (f < 0.3 || !R2.bboxIn(ls.l.bbox, 10)) continue;
+    const l = ls.l; x.strokeStyle = f > K.BACKPRESSURE_LEVEL ? HEAT.jam : f > 0.55 ? HEAT.busy : HEAT.free;
+    if (closeUp) { x.lineWidth = Math.max(1.5, 0.7 * lw); R2.strokeLink(x, l, R2.MEDIAN() + l.lanes * R2.laneW() + 0.8 / metres()); }
+    else { x.lineWidth = Math.max(1.8, Math.min(4.5, (R2.ROAD[l.cls] || R2.ROAD[""])[1] * 1.3)); R2.strokeLink(x, l, 0); } }
+  if (view.mode === "p2p") { const corridor = new Set(); for (const m of sim.mesh.values()) for (const [li] of m.locks.values()) corridor.add(li);
+    x.strokeStyle = "rgba(201,79,74,0.55)"; for (const li of corridor) { const l = g.links[li]; x.lineWidth = Math.max(5, R2.roadWidth(l) + 5); R2.strokeLink(x, l, 0); } }
+  if (closeUp) {   // vehicles
+    const mpu = metres(), vs = g.real ? 1 : 2, lwU = R2.laneW(), med = R2.MEDIAN(), batches = {}, ambs = [];
+    const VC = { motorcycle: "#5e9fb0", bicycle: "#7fb3a6", car: "#b08f6a", bus: "#d9a441", truck: "#b5694a" }, VL = { motorcycle: 2.2, bicycle: 1.9, car: 4.5, bus: 11, truck: 9, ambulance: 5.5 }, VW = { motorcycle: 0.9, bicycle: 0.8, car: 1.9, bus: 2.6, truck: 2.5, ambulance: 2.1 };
+    for (const ls of sim.links) { if (!ls.q.length || !R2.bboxIn(ls.l.bbox, 10)) continue; const l = ls.l, lanes = l.lanes, tr = g.real ? 8 : 22, s0 = g.kind(l.src) === "gateway" ? 0 : tr, s1 = g.kind(l.dst) === "gateway" ? 0 : tr, L = Math.max(1, l.glen - s0 - s1); const tail = new Array(lanes).fill(0);
+      const put = (v, d, len) => { const [px, py, ux, uy] = R2pointAt(l, s0 + d), off = med + ((v.id % lanes) + 0.5) * lwU, nx = uy, ny = -ux, cx = px + nx * off, cy = py + ny * off, w = VW[v.kind] / mpu * vs, hx = ux * len / 2, hy = uy * len / 2, wx = nx * w / 2, wy = ny * w / 2;
+        const P = [R2.W2S(cx - hx - wx, cy - hy - wy), R2.W2S(cx + hx - wx, cy + hy - wy), R2.W2S(cx + hx + wx, cy + hy + wy), R2.W2S(cx - hx + wx, cy - hy + wy)]; if (v.emg) ambs.push(P); else (batches[v.kind] = batches[v.kind] || []).push(P); };
+      let k = 0;
+      for (; k < ls.q.length; k++) { const v = ls.q[k]; if (v.ready > tf) break; const lane = v.id % lanes, len = VL[v.kind] / mpu * vs; const d = L - tail[lane] - len / 2; tail[lane] += Math.max(len + 0.8 / mpu, 7 / mpu * vs * v.pcu * 0.85); put(v, Math.max(len / 2, d), len); }
+      for (; k < ls.q.length; k++) { const v = ls.q[k], lane = v.id % lanes, len = VL[v.kind] / mpu * vs; const p = Math.min(1, Math.max(0, (tf - v.enter) / Math.max(0.1, v.ready - v.enter))); put(v, Math.max(len / 2, Math.min(p * L, L - tail[lane] - len / 2 - 1)), len); } }
+    for (const kind in batches) { x.fillStyle = VC[kind]; x.beginPath(); for (const P of batches[kind]) { x.moveTo(P[0][0], P[0][1]); x.lineTo(P[1][0], P[1][1]); x.lineTo(P[2][0], P[2][1]); x.lineTo(P[3][0], P[3][1]); x.closePath(); } x.fill(); }
+    x.fillStyle = Math.floor(now / 180) % 2 ? "#c94f4a" : "#fff8ec"; for (const P of ambs) { x.beginPath(); x.moveTo(P[0][0], P[0][1]); x.lineTo(P[1][0], P[1][1]); x.lineTo(P[2][0], P[2][1]); x.lineTo(P[3][0], P[3][1]); x.closePath(); x.fill(); x.strokeStyle = "#c94f4a"; x.lineWidth = 1; x.stroke(); }
+  }
+  const big = !g.real || ppm > 0.25;
+  for (const id of g.signals) { const n = g.nodes.get(id); if (!R2.inView(n.x, n.y, 30)) continue; const s = sim.sig.get(id), dead = sim.killed.has(id), [sx, sy] = R2.W2S(n.x, n.y);
+    const locked = view.mode === "p2p" && sim.mesh.get(id).locks.size > 0, ring = dead ? "#c94f4a" : MODE_COLOR[view.mode];
+    if (big) { s.phases.forEach((li, i) => { const l = g.links[li]; const [px, py, ux, uy] = R2pointAt(l, l.glen - (g.real ? 8 : 22)); const off = R2.MEDIAN() + l.lanes * R2.laneW() + 1.2 / metres() * (g.real ? 1 : 2); const [hx, hy] = R2.W2S(px + uy * off, py - ux * off);
+        x.fillStyle = s.state === i ? "#5fb36a" : (s.state === -1 && s.prev === i && s.ig > 2) ? "#e2a93b" : "#d0584b"; x.beginPath(); x.arc(hx, hy, 2.8, 0, 7); x.fill(); });
+      const Rr = g.real ? Math.max(5, Math.min(9, 9 * ppm)) : 9; x.fillStyle = "#fffaf0"; x.strokeStyle = locked ? "#c94f4a" : ring; x.lineWidth = locked ? 3 : 2; x.beginPath(); x.arc(sx, sy, Rr, 0, 7); x.fill(); x.stroke();
+      x.fillStyle = dead ? "#b3a68d" : s.state === -1 ? "#e2a93b" : "#5fb36a"; x.beginPath(); x.arc(sx, sy, Rr * 0.4, 0, 7); x.fill(); }
+    else { const r = n.landmark ? 3.4 : 2.2; x.fillStyle = dead ? "#c94f4a" : locked ? (Math.floor(now / 160) % 2 ? "#c94f4a" : "#fff") : ring; x.globalAlpha = n.landmark || locked || dead ? 1 : 0.75; x.beginPath(); x.arc(sx, sy, locked ? r + 2 : r, 0, 7); x.fill(); x.globalAlpha = 1; }
+    if (dead) { x.strokeStyle = "#c94f4a"; x.lineWidth = 2; x.beginPath(); x.moveTo(sx - 6, sy - 6); x.lineTo(sx + 6, sy + 6); x.moveTo(sx + 6, sy - 6); x.lineTo(sx - 6, sy + 6); x.stroke(); } }
+  if (view.mode === "p2p") { const keep = []; for (const p of world.pulses) { const age = (now - p.born) / 800; if (age >= 1) continue; keep.push(p); const a = g.nodes.get(p.from), b = g.nodes.get(p.to); const [sx, sy] = R2.W2S(a.x + (b.x - a.x) * age, a.y + (b.y - a.y) * age);
+      x.fillStyle = PKT_COLOR[p.kind]; x.beginPath(); x.arc(sx, sy, p.kind === PKT.STATE ? 1.6 : 3, 0, 7); x.fill(); } world.pulses = keep; }
+}
+
+// ------------------------------------------------------------------ overlay: labels + AI speech bubbles (shared by both views)
+function drawOverlay(now) {
+  const c = $("overlay"), x = c.getContext("2d"), g = world.g, sim = world.sims[view.mode];
+  x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, c.width, c.height); x.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  const occ = new Set(), ppm = R.pxPerM();
+  const place = (sx, sy, text, font, color, prio, bg = "rgba(251,247,238,0.82)") => {
+    x.font = font; const w = x.measureText(text).width; const cells = [];
+    for (let cx = Math.floor((sx - w / 2) / 40); cx <= Math.floor((sx + w / 2) / 40); cx++) cells.push(cx + ":" + Math.floor(sy / 16));
+    if (!prio && cells.some(cc => occ.has(cc))) return; cells.forEach(cc => occ.add(cc));
+    x.fillStyle = bg; x.beginPath(); x.roundRect ? x.roundRect(sx - w / 2 - 5, sy - 2, w + 10, 17, 8) : x.rect(sx - w / 2 - 5, sy - 2, w + 10, 17); x.fill(); x.fillStyle = color; x.fillText(text, sx, sy);
+  };
+  x.textAlign = "center"; x.textBaseline = "top";
+  // AI speech bubbles first so they win label collisions
+  world.bubbles = world.bubbles.filter(b => now - b.born < 4200);
+  for (const b of world.bubbles) { const n = g.nodes.get(b.id); const p = R.screen(n.x, n.y, 15); if (!p) continue; const a = Math.min(1, (4200 - (now - b.born)) / 600);
+    x.globalAlpha = a; x.font = "700 12px Nunito, sans-serif"; const lines = wrap(x, b.text, 230); const w = Math.max(...lines.map(l => x.measureText(l).width)) + 18, h = lines.length * 15 + 12, bx = p[0] - w / 2, by = p[1] - h - 18;
+    x.fillStyle = "rgba(255,251,242,0.97)"; x.strokeStyle = b.color; x.lineWidth = 2; x.beginPath(); x.roundRect ? x.roundRect(bx, by, w, h, 12) : x.rect(bx, by, w, h); x.fill(); x.stroke();
+    x.beginPath(); x.moveTo(p[0] - 7, by + h - 1); x.lineTo(p[0], by + h + 10); x.lineTo(p[0] + 7, by + h - 1); x.fill(); x.stroke();
+    x.fillStyle = "#3d3830"; x.textAlign = "left"; lines.forEach((l, i) => x.fillText(l, bx + 9, by + 6 + i * 15)); x.textAlign = "center";
+    for (let cx = Math.floor(bx / 40); cx <= Math.floor((bx + w) / 40); cx++) for (let cy = Math.floor(by / 16); cy <= Math.floor((by + h) / 16); cy++) occ.add(cx + ":" + cy); x.globalAlpha = 1; }
+  for (const id of g.signals) { const n = g.nodes.get(id); if (!(!g.real || (n.landmark && ppm > 0.006) || ppm > 0.9 || view.sel === id)) continue; const p = R.screen(n.x, n.y, 12); if (!p) continue;
+    place(p[0], p[1] + 8, n.name, "800 12px Nunito, sans-serif", sim.killed.has(id) ? "#a8443e" : "#3d3830", view.sel === id); }
+  for (const n of g.j.nodes) { if (n.kind !== "gateway") continue; const p = R.screen(n.x, n.y); if (!p) continue; const hosp = !!n.hospital || /Hospital|Health/.test(n.name);
+    if (g.real && /city edge/.test(n.name) && ppm < 0.02) continue; place(p[0], p[1] + 4, (hosp ? "✚ " : "") + n.name, "700 11px Nunito, sans-serif", hosp ? "#a8443e" : "#6d6455", false); }
+  if (g.j.features && ppm > 0.04) for (const f of g.j.features) { const p = R.screen(f.x, f.y, f.kind === "flyover" ? FLY_H : 0); if (!p) continue; place(p[0], p[1] - 20, (f.kind === "flyover" ? "▲ " : "▼ ") + f.name, "700 11px Nunito, sans-serif", f.kind === "flyover" ? "#7a6a52" : "#3f7f78", false); }
+  if (D.scenery && g.real && ppm > 0.01) for (const w of D.scenery.water.slice(0, 80)) { if (!w.name) continue; const [cx, cy] = w.pts.reduce((a, p) => [a[0] + p[0] / w.pts.length, a[1] + p[1] / w.pts.length], [0, 0]); const p = R.screen(cx, cy); if (!p) continue; place(p[0], p[1], w.name, "italic 600 11px Fraunces, serif", "#3e7590", false, "rgba(0,0,0,0)"); }
+  if (view.sel) { const n = g.nodes.get(view.sel); const p = R.screen(n.x, n.y, 12); if (p) { x.strokeStyle = "#3d3830"; x.lineWidth = 1.5; x.setLineDash([4, 3]); x.beginPath(); x.arc(p[0], p[1], 16, 0, 7); x.stroke(); x.setLineDash([]); } }
+}
+function wrap(x, text, maxW) { const words = text.split(" "), lines = []; let cur = ""; for (const w of words) { const t = cur ? cur + " " + w : w; if (x.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t; } if (cur) lines.push(cur); return lines.slice(0, 4); }
+
+// ------------------------------------------------------------------ UI wiring
+function segment(el, items, get, set) {
+  el.textContent = "";
+  for (const [v, label] of items) { const b = document.createElement("button"); b.textContent = label; b.dataset.v = v; b.setAttribute("aria-pressed", String(String(get()) === String(v)));
+    b.onclick = () => { set(v); [...el.children].forEach(c => c.setAttribute("aria-pressed", String(c.dataset.v === String(get())))); }; el.append(b); }
+}
+function fillSelects() {
+  const g = world.g;
+  const opt = (sel, items, first) => { sel.textContent = ""; if (first) { const o = document.createElement("option"); o.value = ""; o.textContent = first; sel.append(o); } for (const [v, t] of items) { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.append(o); } };
+  opt($("ambRoute"), g.amb.map((a, i) => [i, a.label]));
+  opt($("rainRoad"), g.floods.map((f, i) => [i, f.label]));
+  const landmarks = g.signals.filter(s => g.nodes.get(s).landmark).sort((a, b) => g.nodes.get(a).name.localeCompare(g.nodes.get(b).name));
+  opt($("killNode"), (landmarks.length ? landmarks : g.signals).map(s => [s, g.nodes.get(s).name]));
+  const jumps = landmarks.map(s => ["n:" + s, "● " + g.nodes.get(s).name]).concat((g.j.features || []).map((f, i) => ["f:" + i, (f.kind === "flyover" ? "▲ " : "▼ ") + f.name]));
+  opt($("jump"), jumps, "Fly to junction / flyover…");
+  $("rushBtn").textContent = "Trigger " + g.j.rushLabel;
+  $("cityDesc").textContent = g.j.description; $("cityDesc").title = g.j.description;
+  $("attrib").textContent = g.j.attribution || "";
+  $("netInfo").textContent = `${fmtN(g.signals.length)} signal peers · ${fmtN(g.junctions.length)} unsignalised junctions · ${fmtN(g.links.length)} road links · ${fmtN(g.ods.reduce((a, o) => a + o.vph, 0))} veh/h demand`;
+}
+function warmUp(steps, done) {
+  $("loading").hidden = false; let k = 0; const w = world;
+  const tick = () => { if (w !== world) return; const t0 = performance.now(); while (k < steps && performance.now() - t0 < 40) { w.step(); k++; }
+    $("loadBar").style.width = (100 * k / steps).toFixed(0) + "%"; $("loadTxt").textContent = `Simulating the first ${Math.round(k / 60)} of ${Math.round(steps / 60)} minutes so the roads aren't empty…`;
+    if (k < steps) setTimeout(tick, 0); else { $("loading").hidden = true; w.ready = true; done && done(); } };
+  tick();
+}
+function setViewKind(k) {
+  if (k === "3d" && !R3) k = "2d";
+  view.kind = k; $("gl").hidden = k !== "3d"; $("map").hidden = k === "3d"; view.dirty = true; world.pulses = [];
+}
+function buildCity() { if (R3) R3.build(); R.fit(); }
+function resetWorld(newCity) {
+  if (newCity) view.city = newCity;
+  world = new World(view.city, ++seedCounter); world.fallback = $("fallback").value;
+  view.sel = null; $("inspector").hidden = true; fillSelects(); buildCity(); renderSide(true);
+  warmUp(world.g.real ? 1200 : 420, () => renderSide(true));
+}
+segment($("viewSeg"), R3 ? [["3d", "3D"], ["2d", "Map"]] : [["2d", "Map"]], () => view.kind, (v) => setViewKind(v));
+segment($("citySeg"), D.cityOrder.map(k => [k, D.cities[k].short || D.cities[k].name]), () => view.city, (v) => resetWorld(v));
+segment($("modeSeg"), MODES.map(m => [m, m === "fixed" ? "Fixed 30s" : m === "isolated" ? "Isolated AI" : "P2P Mesh AI"]), () => view.mode, (v) => { view.mode = v; world.pulses = []; world.bubbles = []; world.aiFeed = []; renderSide(true); });
+segment($("speedSeg"), [[1, "1×"], [4, "4×"], [10, "10×"], [30, "30×"]], () => view.speed, (v) => { view.speed = Number(v); });
+$("pauseBtn").onclick = () => { view.paused = !view.paused; $("pauseBtn").textContent = view.paused ? "Resume" : "Pause"; };
+$("resetBtn").onclick = () => resetWorld();
+$("ambBtn").onclick = () => { const i = Number($("ambRoute").value); world.spawnAmbulance(i); const o = world.g.nodes.get(world.g.amb[i].origin); if (world.g.real) R.flyTo(o.x, o.y); };
+$("rushBtn").onclick = () => world.rush();
+$("rainBtn").onclick = () => world.flood(Number($("rainRoad").value));
+$("killBtn").onclick = () => world.kill($("killNode").value);
+$("fallback").onchange = (e) => { world.fallback = e.target.value; };
+$("closeInsp").onclick = () => { view.sel = null; $("inspector").hidden = true; };
+$("iKill").onclick = () => { if (view.sel) world.kill(view.sel); };
+$("jump").onchange = (e) => { const v = e.target.value; if (!v) return; let p;
+  if (v.startsWith("n:")) { const n = world.g.nodes.get(v.slice(2)); p = [n.x, n.y]; view.sel = n.id; $("inspector").hidden = false; renderInspector(); }
+  else { const f = world.g.j.features[Number(v.slice(2))]; p = [f.x, f.y]; }
+  R.flyTo(p[0], p[1]); e.target.value = ""; };
+$("zIn").onclick = () => R.zoom(1.6, view.w / 2, view.h / 2);
+$("zOut").onclick = () => R.zoom(1 / 1.6, view.w / 2, view.h / 2);
+$("zFit").onclick = () => R.fit();
+function pickSignal(mx, my) { let best = null, bd = 18; for (const id of world.g.signals) { const n = world.g.nodes.get(id); const p = R.screen(n.x, n.y, 12); if (!p) continue; const d = Math.hypot(p[0] - mx, p[1] - my); if (d < bd) { bd = d; best = id; } } return best; }
+for (const c of [$("map"), $("gl")]) { let drag = null;
+  c.addEventListener("contextmenu", (e) => e.preventDefault());
+  c.addEventListener("wheel", (e) => { e.preventDefault(); const r = c.getBoundingClientRect(); R.zoom(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+  c.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY, cx: view.cx, cy: view.cy, tx: view.tx, tz: view.tz, yaw: view.yaw, pitch: view.pitch, rot: e.button === 2 || e.shiftKey || e.ctrlKey, moved: false }; c.setPointerCapture(e.pointerId); view.fly = null; });
+  c.addEventListener("pointermove", (e) => { if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 4) { drag.moved = true; c.classList.add("dragging"); }
+    if (!drag.moved) return;
+    if (R.is3d()) { if (drag.rot) { view.yaw = drag.yaw - dx * 0.006; view.pitch = Math.max(0.05, Math.min(1.35, drag.pitch - dy * 0.005)); }
+      else { const k = 2 * view.dist * Math.tan(22.5 * Math.PI / 180) / view.h; const cy = Math.cos(view.yaw), sy = Math.sin(view.yaw), fwd = 1 / Math.max(0.35, Math.cos(view.pitch));
+        view.tx = drag.tx - (dx * cy - dy * sy * fwd) * k; view.tz = drag.tz - (-dx * sy - dy * cy * fwd) * k; } }
+    else { view.cx = drag.cx - dx / view.scale; view.cy = drag.cy - dy / view.scale; view.dirty = true; } });
+  c.addEventListener("pointerup", (e) => { const d = drag; drag = null; c.classList.remove("dragging"); if (!d || d.moved) return; const r = c.getBoundingClientRect(); const best = pickSignal(e.clientX - r.left, e.clientY - r.top); view.sel = best; $("inspector").hidden = !best; if (best) renderInspector(); });
+}
+(() => { const L = $("legend"); const add = (html) => { const s = document.createElement("span"); s.className = "lg"; s.innerHTML = html; L.append(s); };
+  add(`<i class="sw" style="background:${HEAT.free}"></i>Free`); add(`<i class="sw" style="background:${HEAT.busy}"></i>Busy`); add(`<i class="sw" style="background:${HEAT.jam}"></i>Jammed`);
+  add('<i class="sw" style="background:#f6efe0;box-shadow:0 0 0 1px #b9a98a"></i>Flyover'); add('<i class="sw" style="background:#9fbfb8"></i>Underpass');
+  add('<i class="sw" style="background:#5e9fb0"></i>2-wheeler'); add('<i class="sw" style="background:#e9c46a"></i>Car'); add('<i class="sw" style="background:#d9a441"></i>Bus'); add('<i class="sw" style="background:#b5694a"></i>Truck');
+  add('<i class="dot" style="background:#c94f4a"></i>Ambulance'); add(`<i class="dot" style="background:${PKT_COLOR.PLATOON}"></i>Platoon msg`); add(`<i class="dot" style="background:${PKT_COLOR.BACKPRESSURE_WARN}"></i>Backpressure`);
+  add('<span style="color:#857a66">· 3D: drag to pan, right-drag to rotate</span>'); })();
+if (D.edge) { $("kFps").textContent = D.edge.fps + " FPS"; $("kFpsD").textContent = D.edge.detail; } else { $("kFps").textContent = "n/a"; $("kFpsD").textContent = "run scripts/export_edge.py"; }
+
+const TIERS = [[850, "Diamond · Gridlock Slayer", "#4b8a83"], [700, "Platinum · Corridor Commander", "#5f8f6b"], [550, "Gold · Signal Strategist", "#cf9b36"], [400, "Silver · Junction Marshal", "#998c74"], [0, "Bronze · Traffic Rookie", "#c4673f"]];
+const tier = (s) => TIERS.find(t => s >= t[0]);
+let lastSide = 0, lastPick = 0;
+function pctText(a, b, lowerBetter = true) { if (b == null || a == null || !b) return ["", "neutral"]; const p = 100 * (a - b) / b; const good = lowerBetter ? p < -1 : p > 1, bad = lowerBetter ? p > 1 : p < -1; return [`${p > 0 ? "+" : ""}${p.toFixed(0)}% vs fixed timer`, good ? "good" : bad ? "bad" : "neutral"]; }
+function updateScaleBar() {
+  const mPerPx = 1 / R.pxPerM(); const target = 90 * mPerPx; const steps = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+  const m = steps.reduce((a, b) => (b <= target ? b : a), 10); $("scaleBar").style.width = (m / mPerPx).toFixed(0) + "px"; $("scaleTxt").textContent = (m >= 1000 ? `${m / 1000} km` : `${m} m`) + (world.g.real ? "" : " (schematic)") + (R.is3d() ? " · centre" : "");
+}
+function pickAiEvents(now) {   // every ~0.9 s, explain the most interesting thing the AI just did
+  if (now - lastPick < 900 || !world.candidates.length) return; lastPick = now;
+  const best = world.candidates.reduce((a, b) => (b.score > a.score ? b : a)); world.candidates = [];
+  if (best.score < 40) return;
+  const [color, icon] = AI_STYLE[best.kind] || ["#998c74", "•"];
+  world.aiFeed.unshift({ ...best, html: explain(best), color, icon }); if (world.aiFeed.length > 30) world.aiFeed.length = 30;
+  if (R.visibleNode(best.id) && (best.score >= 70 || R.closeUp())) { world.bubbles.push({ id: best.id, text: explain(best).replace(/<[^>]+>/g, ""), color, born: now }); if (world.bubbles.length > 4) world.bubbles.shift(); }
+}
+function renderAi() {
+  const sims = world.sims, cur = sims[view.mode], fx = sims.fixed;
+  $("aiMode").textContent = MODE_LABEL[view.mode];
+  const imp = $("impact"); imp.textContent = "";
+  const cell = (val, label, cls) => { const d = document.createElement("div"); const b = document.createElement("b"); b.textContent = val; if (cls) b.className = cls; const s = document.createElement("span"); s.textContent = label; d.append(b, s); imp.append(d); };
+  if (view.mode === "fixed") { cell("30 s", "every green, every junction"); cell("0", "adaptations: it can't see the traffic");
+    if (cur.kpi && sims.p2p.kpi) { const lost = Math.max(0, (cur.kpi.totalDelay - sims.p2p.kpi.totalDelay) / 3600); cell(fmtN(lost) + " h", "extra vehicle-hours vs P2P Mesh", "bad"); cell(fmtN(lost * 0.45) + " L", "extra fuel burnt idling", "bad"); }
+    const f = $("aiFeed"); f.textContent = ""; const d = document.createElement("div"); d.className = "sub"; d.textContent = "Switch to Isolated AI or P2P Mesh AI to see what the AI changes, junction by junction."; f.append(d); return; }
+  const saved = cur.kpi && fx.kpi ? Math.max(0, (fx.kpi.totalDelay - cur.kpi.totalDelay) / 3600) : 0;
+  cell(fmtN(saved) + " h", "vehicle-hours saved vs fixed timer", "good");
+  cell(`${fmtN(saved * 0.45)} L · ${fmtN(saved * 0.45 * 2.4)} kg`, "fuel · CO₂ not burnt idling", "good");
+  const gs = cur.greens; cell(gs.n ? `${(gs.sum / gs.n).toFixed(0)} s` : "–", gs.n ? `avg green (${gs.min}–${gs.max} s) vs fixed 30 s` : "avg green");
+  const d = cur.decisions; cell(`${fmtN(d.cut)} · ${fmtN(d.extended)}`, "greens cut short · extended");
+  if (view.mode === "p2p") { cell(fmtN(d.ambulance), "ambulance pre-emptions"); cell(`${fmtN(d.backpressure)} · ${fmtN(d.platoon)}`, "backpressure saves · platoon holds"); }
+  else { cell(fmtN(d.ambulance), "ambulance switches"); cell(fmtN(d.fairness), "fairness turns (no road starves)"); }
+  const f = $("aiFeed"); f.textContent = "";
+  if (!world.aiFeed.length) { const e = document.createElement("div"); e.className = "sub"; e.textContent = "Watching the junctions… decisions appear here as the AI makes them."; f.append(e); }
+  for (const ev of world.aiFeed.slice(0, 12)) { const row = document.createElement("div"); row.className = "ai"; const ic = document.createElement("span"); ic.className = "ic"; ic.style.background = ev.color; ic.textContent = ev.icon;
+    const tx = document.createElement("div"); tx.className = "tx"; tx.innerHTML = ev.html; const tm = document.createElement("div"); tm.className = "tm"; tm.textContent = fmtClock(ev.t); tx.append(tm);
+    row.append(ic, tx); row.onclick = () => { const n = world.g.nodes.get(ev.id); view.sel = ev.id; $("inspector").hidden = false; renderInspector(); R.flyTo(n.x, n.y); }; f.append(row); }
+}
+function renderSide(force) {
+  const now = performance.now(); pickAiEvents(now); if (!force && now - lastSide < 450) return; lastSide = now;
+  const sims = world.sims, cur = sims[view.mode].kpi, fx = sims.fixed.kpi;
+  $("clock").textContent = fmtClock(world.t);
+  const chip = $("modeChip"); chip.textContent = MODE_LABEL[view.mode]; chip.style.background = MODE_COLOR[view.mode];
+  updateScaleBar();
+  const banner = $("banner"); banner.textContent = "";
+  const addB = (text, col) => { const d = document.createElement("div"); d.className = "alert"; d.style.color = col; d.textContent = text; banner.append(d); };
+  if (world.t < world.rushUntil) addB(`${world.g.j.rushLabel} · ${Math.ceil((world.rushUntil - world.t) / 60)} min left`, "#b07d22");
+  if (world.flooded.size) addB(`Waterlogging on ${world.flooded.size} road${world.flooded.size > 1 ? "s" : ""}`, "#3e7590");
+  if (sims.p2p.killed.size) addB(`${sims.p2p.killed.size} mesh peer${sims.p2p.killed.size > 1 ? "s" : ""} offline`, "#a8443e");
+  if (sims[view.mode].ambActive.size) addB(`${sims[view.mode].ambActive.size} ambulance${sims[view.mode].ambActive.size > 1 ? "s" : ""} on the way`, "#a8443e");
+  renderAi();
+  if (!cur) return;
+  const calibrating = world.t < 120, sc = cur.score, tr = tier(sc);
+  $("xp").textContent = calibrating ? "…" : sc; $("rank").textContent = calibrating ? "Calibrating" : tr[1]; $("rank").style.color = tr[2];
+  $("ringArc").setAttribute("stroke-dasharray", `${(calibrating ? 0 : sc / 1000) * 163.4} 170`); $("ringArc").setAttribute("stroke", tr[2]);
+  $("kDelay").textContent = cur.avgDelay.toFixed(0) + " s";
+  let [txt, cls] = view.mode === "fixed" ? ["baseline", "neutral"] : pctText(cur.avgDelay, fx && fx.avgDelay); $("kDelayD").textContent = txt; $("kDelayD").className = "d " + cls;
+  $("kAmb").textContent = cur.amb == null ? (cur.ambLive ? "on the way" : "–") : cur.amb.toFixed(0) + " s";
+  [txt, cls] = cur.amb == null ? [cur.ambLive ? `${cur.ambLive} en route` : "dispatch one in God mode", "neutral"] : view.mode === "fixed" ? [`${cur.ambN} arrived · baseline`, "neutral"] : pctText(cur.amb, fx && fx.amb); $("kAmbD").textContent = txt; $("kAmbD").className = "d " + cls;
+  $("kThr").textContent = fmtN(cur.thr);
+  [txt, cls] = view.mode === "fixed" ? [`PCU/h · ${fmtN(cur.veh)} vehicles on road`, "neutral"] : pctText(cur.thr, fx && fx.thr, false); $("kThrD").textContent = txt; $("kThrD").className = "d " + cls;
+  const tb = $("h2h"); tb.textContent = "";
+  for (const m of MODES) { const k = sims[m].kpi; if (!k) continue; const tr2 = document.createElement("tr"); if (m === view.mode) tr2.className = "sel";
+    tr2.onclick = () => { view.mode = m; world.pulses = []; world.bubbles = []; world.aiFeed = []; [...$("modeSeg").children].forEach(c => c.setAttribute("aria-pressed", String(c.dataset.v === m))); renderSide(true); };
+    [MODE_LABEL[m], k.avgDelay.toFixed(0) + " s", fmtN(k.thr), k.amb == null ? "–" : k.amb.toFixed(0) + " s", calibrating ? "…" : k.score].forEach((c, i) => { const td = document.createElement("td"); td.textContent = c; if (i === 0) td.style.color = MODE_COLOR[m]; tr2.append(td); });
+    tb.append(tr2); }
+  const p2 = sims.p2p; $("godNote").textContent = `${fmtN(p2.sent.PLATOON + p2.sent.STATE_GOSSIP + p2.sent.BACKPRESSURE_WARN + p2.sent.PRIORITY_CORRIDOR)} mesh messages`;
+  const feed = $("feed"); feed.textContent = "";
+  for (const e of world.events) { const d = document.createElement("div"); const b = document.createElement("b"); b.textContent = fmtClock(e.t) + " "; d.append(b, document.createTextNode(e.text)); feed.append(d); }
+  if (view.sel) renderInspector();
+}
+function renderInspector() {
+  const id = view.sel, g = world.g, sim = world.sims[view.mode], s = sim.sig.get(id), n = g.nodes.get(id), p2 = world.sims.p2p, mesh = p2.mesh.get(id);
+  if (!s) return;
+  $("iName").textContent = n.name;
+  const dead = p2.killed.has(id), st = $("iStatus");
+  if (view.mode === "p2p") { st.textContent = dead ? `Offline · fallback ${world.fallback === "fixed" ? "fixed timer" : "isolated AI"}` : "Mesh peer online"; st.style.color = dead ? "#a8443e" : "#4b8a83"; }
+  else { st.textContent = view.mode === "fixed" ? "Fixed timer (no mesh)" : "Isolated AI (no mesh)"; st.style.color = MODE_COLOR[view.mode]; }
+  $("iGreen").textContent = s.state === -1 ? `Amber / all-red → ${g.approachName(s.phases[s.pending])}` : g.approachName(s.phases[s.cur]);
+  $("iGreen").style.color = s.state === -1 ? "#b07d22" : "#4f8a59";
+  $("iElapsed").textContent = s.state === -1 ? `${s.ig}s` : `${s.elapsed}s green`;
+  $("iWhy").textContent = whyNow(s);
+  const ap = $("iAppr"); ap.textContent = "";
+  s.phases.forEach((li, i) => { const ls = sim.links[li]; let q = 0; for (const v of ls.q) { if (v.ready > sim.t) break; q += v.pcu; } const fill = ls.occ / ls.l.capacity;
+    const dot = document.createElement("i"); dot.className = "dot"; dot.style.background = s.state === i ? "#5fb36a" : "#d0584b";
+    const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = g.approachName(li); nm.title = g.approachName(li);
+    const bar = document.createElement("div"); bar.className = "qbar"; const bi = document.createElement("i"); bi.style.width = Math.min(100, fill * 100) + "%"; bi.style.background = fill > K.BACKPRESSURE_LEVEL ? HEAT.jam : fill > 0.5 ? HEAT.busy : HEAT.free; bar.append(bi);
+    const fv = document.createElement("span"); fv.style.textAlign = "right"; fv.style.fontFamily = "var(--mono)"; fv.textContent = `${q.toFixed(0)}·${(fill * 100).toFixed(0)}%`;
+    ap.append(dot, nm, bar, fv); });
+  // green split: how the AI shares green time vs the fixed timer's equal 30 s turns
+  const sp = $("iSplit"); sp.textContent = ""; const tot = s.greenSec.reduce((a, b) => a + b, 0) || 1, eq = 1 / s.phases.length;
+  s.phases.forEach((li, i) => { const share = s.greenSec[i] / tot; const nm = document.createElement("span"); nm.className = "nm"; nm.style.overflow = "hidden"; nm.style.textOverflow = "ellipsis"; nm.style.whiteSpace = "nowrap"; nm.textContent = `${g.approachName(li)} · ${(share * 100).toFixed(0)}%`; nm.title = g.approachName(li);
+    const bars = document.createElement("div"); bars.className = "bars"; const a = document.createElement("i"); a.style.width = Math.max(2, share * 100) + "%"; a.style.background = MODE_COLOR[view.mode]; const b = document.createElement("i"); b.style.width = eq * 100 + "%"; b.style.background = "#d8ccb4"; bars.append(a, b); sp.append(nm, bars); });
+  $("iSplitNote").textContent = view.mode === "fixed" ? "equal turns" : "top: AI · bottom: fixed";
+  const peers = $("iPeers"); peers.textContent = "";
+  for (const nb of g.neighbors[id] || []) { const c = document.createElement("span"); c.className = "chip"; const off = p2.killed.has(nb) || dead; c.style.color = off ? "#a8443e" : "#4b8a83"; c.style.cursor = "pointer";
+    const nn = g.nodes.get(nb); c.textContent = (off ? "✕ " : "● ") + g.shortName(nb); c.title = nn.name;
+    c.onclick = () => { view.sel = nb; R.flyTo(nn.x, nn.y); renderInspector(); }; peers.append(c); }
+  $("iPkt").textContent = `sent ${fmtN(mesh.tx)} · received ${fmtN(mesh.rx)}`;
+  const term = $("iTerm"); const atBottom = term.scrollTop + term.clientHeight >= term.scrollHeight - 8; term.textContent = "";
+  if (!mesh.log.length) { const d = document.createElement("div"); d.className = "k-DROP"; d.textContent = view.mode === "p2p" ? "Waiting for messages…" : "Message log is from the P2P run. Switch to P2P Mesh AI to see it live."; term.append(d); }
+  for (const e of mesh.log.slice(-60)) { const p = e.p, d = document.createElement("div"); d.className = "k-" + (e.dir === "DROP" ? "DROP" : p.kind);
+    const other = e.dir === "RX" ? p.from : p.to; const extra = p.kind === PKT.PLATOON ? `${p.pcu} PCU eta ${p.eta}s` : p.kind === PKT.PRI ? `ambulance #${p.vid} eta ${p.eta.toFixed(0)}s` : `fill ${(p.fill * 100).toFixed(0)}%`;
+    d.textContent = `[${fmtClock(e.t)}] ${e.dir.padEnd(4)} ${p.kind.padEnd(18)} ${e.dir === "RX" ? "←" : "→"} ${String(other).padEnd(5)} ${extra}`; term.append(d); }
+  if (atBottom) term.scrollTop = term.scrollHeight;
+  $("iKill").textContent = dead ? "Revive this peer" : "Kill this peer";
+  $("iFallback").textContent = dead ? "" : `falls back to ${world.fallback === "fixed" ? "fixed timer" : "isolated AI"}`;
+}
+
+// ------------------------------------------------------------------ main loop
+function resize() {
+  const r = $("mapwrap").getBoundingClientRect(); view.dpr = window.devicePixelRatio || 1; view.w = r.width; view.h = r.height;
+  for (const id of ["map", "overlay"]) { const c = $(id); c.width = Math.round(r.width * view.dpr); c.height = Math.round(r.height * view.dpr); }
+  R2.resize(); if (R3) R3.resize();
+}
+let acc = 0, last = performance.now(), lastWarmDraw = 0;
+function frame(now) {
+  const dt = Math.min(0.25, (now - last) / 1000); last = now;
+  if (world.ready && !view.paused) { acc += dt * view.speed; let steps = 0; const t0 = performance.now();
+    while (acc >= 1 && steps < 30 && performance.now() - t0 < 40) { world.step(); acc -= 1; steps++; } if (acc > 3) acc = 0; }
+  const tf = world.t + (view.paused ? 0 : Math.min(acc, 1)) - 1;
+  if (world.ready || now - lastWarmDraw > 600) { lastWarmDraw = now; if (R.is3d()) R3.render(tf, now); else draw2d(tf, now); drawOverlay(now); }
+  renderSide(false);
+  requestAnimationFrame(frame);
+}
+new ResizeObserver(() => { resize(); if (world && !view.fitScale) R2.fit(); }).observe($("mapwrap"));
+if (R3) R3.init();
+resize();
+world = new World(view.city, seedCounter); fillSelects(); setViewKind(view.kind); buildCity(); renderSide(true);
+warmUp(world.g.real ? 1200 : 420, () => renderSide(true));
+window.__cc = { world: () => world, view, R, renderSide, renderInspector, resetWorld, setViewKind };  // test hook
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+controller,vehicles,avg_wait_s,avg_time_loss_s,p95_wait_s,ambulance_avg_wait_s
+Fixed timer,1908,76.9,93.2,198.0,70.0
+Webster pre-timed,1908,35.8,46.8,83.0,42.0
+AI adaptive,1908,35.5,48.7,74.6,0.2

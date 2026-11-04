@@ -1,0 +1,27 @@
+{
+  "cpu": "Intel64 Family 6 Model 154 Stepping 3, GenuineIntel",
+  "frames": 40,
+  "results": [
+    {
+      "imgsz": 640,
+      "pytorch_cpu_ms": 92.0,
+      "onnx_cpu_ms": 67.0,
+      "onnx_fps": 14.9,
+      "onnx_mb": 12.9
+    },
+    {
+      "imgsz": 416,
+      "pytorch_cpu_ms": 57.1,
+      "onnx_cpu_ms": 33.4,
+      "onnx_fps": 30.0,
+      "onnx_mb": 12.8
+    },
+    {
+      "imgsz": 320,
+      "pytorch_cpu_ms": 45.0,
+      "onnx_cpu_ms": 23.6,
+      "onnx_fps": 42.3,
+      "onnx_mb": 12.7
+    }
+  ]
+}
