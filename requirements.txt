@@ -1,3 +1,7 @@
+# CPU-only PyTorch: the project runs on CPU, and the GPU build is several GB.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision
 ultralytics>=8.3
 supervision>=0.25
 opencv-python
@@ -7,7 +11,4 @@ plotly
 streamlit>=1.40
 onnx
 onnxruntime
-# optional: microscopic validation in SUMO (scripts/sumo_compare.py)
-eclipse-sumo
-traci
 lap>=0.5

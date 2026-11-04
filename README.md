@@ -292,6 +292,7 @@ python scripts/download_demo.py      # demo video + model weights
 streamlit run app.py                 # dashboard
 python scripts/compare.py            # city benchmark: 2 cities x 3 scenarios x 3 modes (~30 s)
 python scripts/compare.py --junction # single-junction benchmark (5 seeds)
+pip install -r requirements-sumo.txt # needed once, for the SUMO validation below
 python scripts/sumo_compare.py       # SUMO validation (add --gui to watch it)
 python scripts/export_edge.py        # ONNX export + CPU benchmark
 python scripts/download_bengaluru.py # real Bengaluru clips + UVH-26 weights

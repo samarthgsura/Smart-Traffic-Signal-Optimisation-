@@ -1,0 +1,3 @@
+# Optional: microscopic validation in SUMO (scripts/sumo_compare.py).
+eclipse-sumo
+traci
