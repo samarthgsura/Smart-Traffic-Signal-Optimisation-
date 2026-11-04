@@ -270,6 +270,7 @@ traffic/web/command_center.html  Live canvas Command Center (embedded by app.py)
 scripts/download_demo.py  Fetch demo video + YOLOv8n weights
 scripts/download_bengaluru.py  Fetch real Bengaluru clips + UVH-26 weights
 scripts/analyse_clips.py  Compare YOLOv8n and UVH-26 on the clips -> data/bengaluru_clips.json
+scripts/render_clips.py   Side-by-side comparison videos -> data/clip_videos/
 scripts/compare.py        City benchmark -> data/city_results.csv (--junction: single junction)
 scripts/sumo_compare.py   Same controllers inside SUMO -> data/sumo_results.csv
 scripts/export_edge.py    ONNX export + CPU latency benchmark -> data/edge_benchmark.json
@@ -295,6 +296,7 @@ python scripts/sumo_compare.py       # SUMO validation (add --gui to watch it)
 python scripts/export_edge.py        # ONNX export + CPU benchmark
 python scripts/download_bengaluru.py # real Bengaluru clips + UVH-26 weights
 python scripts/analyse_clips.py      # YOLOv8n vs UVH-26 on the clips (--coco-only: YOLOv8n only)
+python scripts/render_clips.py       # side-by-side videos for the dashboard's Bengaluru clips tab
 ```
 
 To use your own camera clip, upload it in the dashboard and edit `data/zones.json`:
@@ -302,7 +304,20 @@ each zone is a list of `[x, y]` points from 0 to 1 (fractions of frame width/hei
 
 ## Screenshots
 
-_Add screenshots / a demo GIF of the dashboard here._
+Figures in these screenshots are live snapshots from one simulated run, so they differ from the
+averaged benchmark results above.
+
+**City Command Center:** the real Bengaluru road network in 3D, with the "What the AI is changing" panel.
+
+![3D city view and AI panel](docs/screenshot_city_ai_panel.jpg)
+
+**Junction inspector at Silk Board:** why the current green is on, queues, AI vs fixed green time and mesh packets.
+
+![Silk Board junction inspector](docs/screenshot_silk_board_inspector.jpg)
+
+**Bengaluru clips tab:** YOLOv8n and UVH-26 side by side on real footage (clip credits under Results).
+
+![Bengaluru clips tab](docs/screenshot_bengaluru_clips.jpg)
 
 ## Limitations and next steps
 
