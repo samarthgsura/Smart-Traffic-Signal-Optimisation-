@@ -44,7 +44,8 @@ CITY_SHORT = {"bengaluru_osm": "Bengaluru · real map", "bengaluru": "Bengaluru 
 def _source_stamp() -> tuple:
     """Changes whenever the map data or the page template changes (cache key)."""
     files = [ROOT / "traffic" / "web" / "command_center.html", DATA / "cities" / "bengaluru_osm.json",
-             DATA / "cities" / "bengaluru_scenery.json", ROOT / "traffic" / "web" / "vendor" / "three.min.js",
+             DATA / "cities" / "bengaluru_scenery.json", DATA / "cities" / "bengaluru_urban.json",
+             ROOT / "traffic" / "web" / "vendor" / "three.min.js",
              ROOT / "traffic" / "city_graph.py", ROOT / "traffic" / "p2p_mesh.py"]
     return tuple(f.stat().st_mtime if f.exists() else 0 for f in files)
 
@@ -79,6 +80,8 @@ def command_center_html(_stamp: tuple) -> str:
     order = [k for k in CITY_SHORT if k in city_graph.available()]
     scenery_file = DATA / "cities" / "bengaluru_scenery.json"   # lakes + parks for the 3D view
     scenery = json.loads(scenery_file.read_text(encoding="utf-8")) if scenery_file.exists() else None
+    urban_file = DATA / "cities" / "bengaluru_urban.json"       # Namma Metro + tall buildings
+    urban = json.loads(urban_file.read_text(encoding="utf-8")) if urban_file.exists() else None
     cities = {}
     for k in order:
         cities[k] = city_graph.load(k).to_json()
@@ -92,6 +95,7 @@ def command_center_html(_stamp: tuple) -> str:
         "defaultCity": order[0],
         "edge": edge,
         "scenery": scenery,
+        "urban": urban,
     }
     web = ROOT / "traffic" / "web"
     html = (web / "command_center.html").read_text(encoding="utf-8")

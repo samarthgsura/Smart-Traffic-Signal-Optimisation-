@@ -61,6 +61,16 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 350px; min-height: 0
 .clock { font-family: var(--mono); font-size: 19px; font-weight: 500; }
 .modechip { display: inline-block; font-weight: 800; font-size: 11px; padding: 2px 10px; border-radius: 99px; color: #fffaf0; }
 .hud.tr select { max-width: 230px; font-size: 12px; }
+.roadcard { position: absolute; top: 96px; left: 12px; width: 282px; max-height: calc(100% - 160px); overflow-y: auto; padding: 11px 13px; display: grid; gap: 8px; z-index: 4; }
+.roadcard[hidden] { display: none; }
+.roadcard h3 { margin: 0; font: 700 17px var(--display, serif); line-height: 1.2; padding-right: 52px; }
+.roadcard .close { position: absolute; top: 9px; right: 9px; padding: 3px 9px; font-size: 11px; }
+.roadnum { font: 700 30px/1 var(--display, serif); }
+.roadgrid { display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; font-size: 12px; }
+.roadgrid b { text-align: right; font-variant-numeric: tabular-nums; }
+.roadbtns { display: flex; gap: 6px; }
+.roadbtns .btn { flex: 1; padding: 5px 6px; font-size: 12px; }
+.roadcard input[type=range] { width: 100%; accent-color: var(--teal); margin: 0; }
 .hud.bl { left: 12px; bottom: 12px; display: flex; flex-wrap: wrap; gap: 5px 12px; max-width: calc(100% - 210px); padding: 7px 12px; font-size: 12px; color: var(--muted); }
 .lg { display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
 .sw { width: 13px; height: 6px; border-radius: 3px; display: inline-block; }
@@ -170,7 +180,18 @@ label.s { color: var(--muted); font-size: 11px; letter-spacing: .05em; text-tran
         <div class="clock" id="clock">17:00:00</div>
         <span class="modechip" id="modeChip">P2P MESH AI</span>
         <select id="jump" aria-label="Fly to a junction"><option value="">Fly to…</option></select>
+        <select id="roadSel" aria-label="Watch a road in 3D"><option value="">Watch a road in 3D…</option></select>
       </div>
+      <aside class="roadcard card-hud" id="roadCard" hidden aria-label="Road view">
+        <button class="btn close" id="roadClose">Close</button>
+        <div><div class="sub">Watching this road</div><h3 id="rName">–</h3><div class="sub" id="rLen"></div></div>
+        <div><span class="roadnum" id="rTotal">0</span> <span class="sub">vehicles on it right now</span></div>
+        <div class="roadgrid" id="rKinds"></div>
+        <div class="roadgrid" id="rStats"></div>
+        <div><div class="sub" style="margin-bottom:3px">Move along the road</div><input type="range" id="rSlide" min="0" max="1000" value="0" aria-label="Position along the road"></div>
+        <div class="roadbtns"><button class="btn" id="rWhole">Whole road</button><button class="btn" id="rDrive">Drive along</button></div>
+        <div class="sub" id="rNote"></div>
+      </aside>
       <div class="hud bl card-hud" id="legend"></div>
       <div class="hud br">
         <div class="scalebar card-hud"><span id="scaleTxt">1 km</span><i id="scaleBar" style="width:60px"></i></div>
@@ -685,11 +706,30 @@ const R2 = (() => {
   };
 })();
 
+// ------------------------------------------------------------------ Bengaluru's urban districts
+// [name, lat, lon, radius m, tallest building m, share of glass office towers, kind]
+const LL = (lat, lon) => [(lon - 77.5946) * 108476, -(lat - 12.9716) * 110540];
+const DISTRICTS = [
+  ["MG Road · CBD", 12.9745, 77.6080, 2600, 120, 0.6, "tech"], ["Whitefield", 12.9800, 77.7400, 3400, 85, 0.6, "tech"],
+  ["Electronic City", 12.8456, 77.6603, 2800, 65, 0.65, "tech"], ["Manyata Tech Park", 13.0450, 77.6200, 1900, 70, 0.7, "tech"],
+  ["Outer Ring Road tech corridor", 12.9300, 77.6880, 3600, 75, 0.6, "tech"], ["Domlur · Embassy Golf Links", 12.9540, 77.6420, 1500, 60, 0.6, "tech"],
+  ["Yeshwanthpur", 13.0150, 77.5500, 1900, 120, 0.3, "res"], ["Hebbal", 13.0358, 77.5970, 2000, 75, 0.25, "res"],
+  ["Koramangala", 12.9352, 77.6245, 2200, 40, 0.2, "res"], ["Indiranagar", 12.9784, 77.6408, 2000, 30, 0.15, "res"],
+  ["HSR Layout", 12.9116, 77.6389, 2200, 30, 0.1, "res"], ["Jayanagar", 12.9250, 77.5938, 2300, 25, 0.05, "res"],
+  ["JP Nagar", 12.9000, 77.5850, 2300, 35, 0.05, "res"], ["Bannerghatta Road", 12.8850, 77.5970, 2200, 60, 0.15, "res"],
+  ["Malleshwaram", 13.0035, 77.5700, 1800, 30, 0.1, "res"], ["Rajajinagar", 12.9915, 77.5520, 2000, 30, 0.1, "res"],
+  ["Basavanagudi", 12.9420, 77.5740, 1700, 20, 0.05, "res"], ["Majestic · Chickpete", 12.9720, 77.5760, 1800, 30, 0.1, "res"],
+  ["KR Puram", 13.0070, 77.6960, 2000, 40, 0.1, "res"], ["Yelahanka", 13.1007, 77.5963, 2400, 45, 0.05, "res"],
+  ["Sarjapur Road", 12.9000, 77.7000, 2400, 60, 0.2, "res"], ["Kengeri", 12.9100, 77.4850, 2000, 30, 0.05, "res"],
+  ["Peenya Industrial Area", 13.0300, 77.5200, 2600, 18, 0, "ind"], ["Bommasandra", 12.8180, 77.6850, 2200, 18, 0, "ind"],
+].map(([name, lat, lon, r, h, glass, kind]) => { const [x, z] = LL(lat, lon); return { name, x, z, r, h, glass, kind }; });
+const LANDMARKS = [["Vidhana Soudha", 12.9796, 77.5908], ["UB City", 12.9716, 77.5960], ["World Trade Center", 13.0120, 77.5550], ["Lalbagh", 12.9507, 77.5848], ["Cubbon Park", 12.9763, 77.5929]].map(([name, a, b]) => { const [x, z] = LL(a, b); return { name, x, z }; });
+
 // ------------------------------------------------------------------ 3D renderer (Ghibli diorama)
 const R3 = (() => {
   if (!window.THREE) return null;
   const T = window.THREE;
-  let renderer, scene, camera, roadMesh, roadColors, linkRanges, vehMesh, ambMesh, lampMesh, poleMesh, sigPoints, pulsePoints, cloudGroup, built = null;
+  let renderer, scene, camera, roadMesh, roadColors, linkRanges, vehMesh, cabMesh, ambMesh, lampMesh, poleMesh, sigPoints, pulsePoints, cloudGroup, built = null, roadGlow = null, trainMesh = null, trainPaths = [], lodTiles = [], streetMesh = null, tankMesh = null;
   const tmpM = new T.Matrix4(), tmpQ = new T.Quaternion(), tmpS = new T.Vector3(), tmpP = new T.Vector3(), tmpC = new T.Color(), UP = new T.Vector3(0, 1, 0);
   const MAXV = 24000;
   const softTex = (draw, size = 128) => { const c = document.createElement("canvas"); c.width = c.height = size; draw(c.getContext("2d"), size); const t = new T.CanvasTexture(c); return t; };
@@ -701,7 +741,7 @@ const R3 = (() => {
     scene.background = softTex((x, s) => { const g = x.createLinearGradient(0, 0, 0, s); g.addColorStop(0, "#9cc8e0"); g.addColorStop(0.55, "#cfe3e6"); g.addColorStop(1, "#f6e6c4"); x.fillStyle = g; x.fillRect(0, 0, s, s); }, 256);
     scene.fog = new T.Fog(0xf0e2c3, 1000, 100000);
     camera = new T.PerspectiveCamera(45, 1, 2, 400000);
-    scene.add(new T.HemisphereLight(0xfff1d6, 0x7f9a66, 0.62));
+    scene.add(new T.HemisphereLight(0xfff1d6, 0x7f9a66, 0.62), new T.AmbientLight(0xffffff, 0.08));
     const sun = new T.DirectionalLight(0xffe2b8, 0.42); sun.position.set(-0.6, 1, 0.4); scene.add(sun);
   }
   function clearCity() { if (!built) return; scene.remove(built); built.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.dispose()); }); built = null; }
@@ -726,18 +766,166 @@ const R3 = (() => {
     });
   }
   const BASE = { motorway: 0x9b7d5c, trunk: 0xa88a66, primary: 0xb79c79, secondary: 0xc6ae8e, tertiary: 0xd2bfa2, connector: 0xd2bfa2, "": 0xb79c79 };
+  const ASPHALT = { motorway: 0x5f5d5a, trunk: 0x6a6763, primary: 0x75716b, secondary: 0x827d76, tertiary: 0x8c8780, connector: 0x8c8780, "": 0x75716b };
+  // ---- the metropolis: painted ground, street-lining buildings, Namma Metro, landmarks
+  const cellKey = (x, z, c) => (Math.floor(x / c) + 20000) * 40001 + (Math.floor(z / c) + 20000);
+  function facade(cols, rows, win, frame) {   // white wall with windows: instance colour tints the wall
+    const t = softTex((x, s) => { x.fillStyle = "#fff"; x.fillRect(0, 0, s, s); const top = s * 0.06, cw = s / cols, ch = (s - top) / rows; const r = mulberry32(cols * 31 + rows);
+      for (let a = 0; a < cols; a++) for (let b = 0; b < rows; b++) { x.fillStyle = r() < 0.16 ? "#e8d9a8" : win; x.fillRect(a * cw + cw * frame, top + b * ch + ch * frame, cw * (1 - 2 * frame), ch * (1 - 2 * frame)); } }, 256);
+    t.anisotropy = 4; return t;
+  }
+  function boxGeo() {   // origin at the base; roof and floor use the blank band at the top of the facade
+    const g = new T.BoxGeometry(1, 1, 1); g.translate(0, 0.5, 0); const uv = g.attributes.uv; for (let i = 8; i < 16; i++) uv.setXY(i, 0.5, 0.985); return g;
+  }
+  function pointInPoly(x, y, pts) { let inside = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const a = pts[i], b = pts[j]; if ((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]) inside = !inside; } return inside; }
+  function buildMetropolis(R) {
+    const g = world.g, LAND = 150, land = new Map(), roadCells = new Set(), taken = new Set(), rnd = mulberry32(42);
+    // 1. real lakes and parks, rasterised so nothing gets built in them
+    if (D.scenery) for (const [list, code] of [[D.scenery.park, 2], [D.scenery.water, 1]]) for (const p of list) { let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const [x, y] of p.pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+      for (let a = Math.floor(x0 / LAND); a <= Math.floor(x1 / LAND); a++) for (let b = Math.floor(y0 / LAND); b <= Math.floor(y1 / LAND); b++) if (pointInPoly((a + 0.5) * LAND, (b + 0.5) * LAND, p.pts)) land.set(cellKey((a + 0.5) * LAND, (b + 0.5) * LAND, LAND), code); }
+    // 2. urban density from the real road network, plus the known districts
+    const GC = 1000, GN = 124, GH = GN / 2, grid = new Float32Array(GN * GN);
+    for (const l of g.links) { if (l.cls === "connector" || l.cls === "motorway") continue; const pts = l.geom; for (let k = 1; k < pts.length; k++) { const d = Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]); const a = Math.floor(pts[k][0] / GC) + GH, b = Math.floor(pts[k][1] / GC) + GH; if (a >= 0 && b >= 0 && a < GN && b < GN) grid[b * GN + a] += d; } }
+    for (let pass = 0; pass < 2; pass++) { const c = grid.slice(); for (let b = 1; b < GN - 1; b++) for (let a = 1; a < GN - 1; a++) grid[b * GN + a] = (c[b * GN + a] * 4 + c[b * GN + a - 1] + c[b * GN + a + 1] + c[(b - 1) * GN + a] + c[(b + 1) * GN + a]) / 8; }
+    const district = (x, z) => { let best = null, bw = 0; for (const d of DISTRICTS) { const dx = x - d.x, dz = z - d.z, q = (dx * dx + dz * dz) / (d.r * d.r); if (q > 4) continue; const w = Math.exp(-q); if (w > bw) { bw = w; best = d; } } return [best, bw]; };
+    const urbanAt = (x, z) => { const a = Math.floor(x / GC) + GH, b = Math.floor(z / GC) + GH, n = a >= 0 && b >= 0 && a < GN && b < GN ? grid[b * GN + a] : 0, r = Math.hypot(x, z); return Math.min(1, Math.min(1, n / 7000) * 0.55 + 0.75 * Math.exp(-r / 9500) + district(x, z)[1] * 0.6); };
+    // 3. ground painted from that density: concrete city fading out to green countryside
+    const GR = R * 1.6, PX = 1024, canvas = document.createElement("canvas"); canvas.width = canvas.height = PX; const cx2 = canvas.getContext("2d"), img = cx2.createImageData(PX, PX), nr = mulberry32(5);
+    const coarse = new Float32Array(66 * 66); for (let i = 0; i < coarse.length; i++) coarse[i] = nr();
+    for (let py = 0; py < PX; py++) for (let px = 0; px < PX; px++) { const x = (px / PX - 0.5) * 2 * GR, z = (py / PX - 0.5) * 2 * GR, u = Math.min(1, urbanAt(x, z) * 1.5), e = nr() * 0.05 - 0.025 + (coarse[(py >> 4) * 65 + (px >> 4) & 4095 % coarse.length] - 0.5) * 0.09 * (1 - u), i = (py * PX + px) * 4, k = 1 + e;
+      img.data[i] = (157 + (186 - 157) * u) * k; img.data[i + 1] = (187 + (184 - 187) * u) * k; img.data[i + 2] = (124 + (172 - 124) * u) * k; img.data[i + 3] = 255; }
+    cx2.putImageData(img, 0, 0); const tex = new T.CanvasTexture(canvas); tex.anisotropy = 4;
+    const ground = new T.Mesh(new T.CircleGeometry(GR, 96), new T.MeshLambertMaterial({ map: tex })); ground.rotation.x = -Math.PI / 2;
+    built.add(ground);
+    // 4. real roads occupy their cells
+    for (const l of g.links) { for (let d = 0; d <= l.glen; d += 12) { const pa = R2pointAt(l, d); roadCells.add(cellKey(pa[0], pa[1], 20)); } }
+    // 5. buildings: rows behind the real roads, nearest the centre first
+    // road frontage gets the first share of the budget; LIM is raised below for the neighbourhoods
+    const LIM = { low: 30000, mid: 7000, tower: 5000, shed: 2500 }, low = [], mid = [], tower = [], glass = [], shed = [], street = [], CELL = 26;
+    const free = (x, z, halfCells) => { const a = Math.floor(x / CELL), b = Math.floor(z / CELL); for (let i = -halfCells; i <= halfCells; i++) for (let j = -halfCells; j <= halfCells; j++) if (taken.has((a + i + 20000) * 40001 + (b + j + 20000))) return false; return true; };
+    const mark = (x, z, halfCells) => { const a = Math.floor(x / CELL), b = Math.floor(z / CELL); for (let i = -halfCells; i <= halfCells; i++) for (let j = -halfCells; j <= halfCells; j++) taken.add((a + i + 20000) * 40001 + (b + j + 20000)); };
+    for (const m of LANDMARKS.slice(0, 3)) mark(m.x, m.z, 5);
+    const realTowers = (D.urban && D.urban.towers) || [];
+    for (const t of realTowers) { mark(t.x, t.y, Math.ceil(Math.max(t.w, t.d) / 2 / CELL)); (t.h > 40 ? glass : tower).push([t.x, t.y, t.w, t.d, t.h, -t.a, rnd()]); }
+    const ordered = g.links.filter(l => l.cls !== "connector" && l.cls !== "motorway" && l.level === 0 && !l.ramp).sort((a, b) => Math.hypot(a.geom[0][0], a.geom[0][1]) - Math.hypot(b.geom[0][0], b.geom[0][1]));
+    const fits = (x, z) => !roadCells.has(cellKey(x, z, 20)) && !land.has(cellKey(x, z, LAND));
+    const placeAt = (x, z, yaw, u, dn, dw) => { if (!fits(x, z)) return;
+      const r = rnd(), kind = dn ? dn.kind : "res";
+      if (kind === "ind" && dw > 0.25 && r < 0.6) { if (shed.length < LIM.shed && free(x, z, 1)) { mark(x, z, 1); shed.push([x, z, 26 + rnd() * 22, 20 + rnd() * 14, 7 + rnd() * 5, yaw, rnd()]); } return; }
+      const pTower = dn && dw > 0.3 && !realTowers.length ? Math.min(0.14, dw * 0.16 * (dn.glass + 0.35)) : 0;
+      if (r < pTower && tower.length + glass.length < LIM.tower && free(x, z, 1)) { const isGlass = rnd() < dn.glass, h = 28 + rnd() * rnd() * (dn.h - 28) * (0.55 + 0.45 * dw) + 6, a = 20 + rnd() * 18, b = 18 + rnd() * 14; mark(x, z, 1); (isGlass ? glass : tower).push([x, z, a, b, h, yaw, rnd()]); return; }
+      if (!free(x, z, 0)) return;
+      if (r < pTower + Math.min(0.3, u * 0.26 + dw * 0.14)) { if (mid.length < LIM.mid) { mark(x, z, 0); const f = 5 + Math.floor(rnd() * 7); mid.push([x, z, 16 + rnd() * 10, 15 + rnd() * 9, f * 3.2, yaw, rnd()]); } return; }
+      if (low.length < LIM.low) { mark(x, z, 0); const f = 1 + Math.floor(rnd() * rnd() * 4.5); low.push([x, z, 13 + rnd() * 10, 13 + rnd() * 10, f * 3.1 + 1, yaw, rnd()]); } };
+    for (const l of ordered) { const w0 = 0.6 + l.lanes * 3.5;
+      for (let d = 12; d < l.glen; d += 24) { const pa = R2pointAt(l, d), [dn, dw] = district(pa[0], pa[1]), u = urbanAt(pa[0], pa[1]); if (u < 0.1) continue;
+        const nx = pa[3], nz = -pa[2], yaw = Math.atan2(-pa[3], pa[2]);
+        if (street.length < 15000 && Math.floor(d / 24) % 3 === 0 && u > 0.14) { const o = w0 + 3 + rnd() * 2, sx = pa[0] + nx * o, sz = pa[1] + nz * o; if (fits(sx, sz)) street.push([sx, sz, rnd()]); }
+        const rows = u > 0.3 ? 2 : 1;
+        for (let row = 0; row < rows; row++) { if (rnd() > Math.min(0.96, u * 1.5 + 0.08)) continue;
+          const off = w0 + 9 + row * 29 + rnd() * 6; placeAt(pa[0] + nx * off + pa[2] * (rnd() - 0.5) * 9, pa[1] + nz * off + pa[3] * (rnd() - 0.5) * 9, yaw, u, dn, dw); } } }
+    // 5b. neighbourhoods: the map only has major roads, so fill the land between them with
+    // generated blocks and local streets, densest where the real road network is densest
+    LIM.low = 85000; LIM.mid = 22000;
+    const PATCH = 2600, BLOCK = 160, patches = [], streets = [];
+    for (let a = -14; a <= 14; a++) for (let b = -14; b <= 14; b++) { const x = (a + 0.5) * PATCH, z = (b + 0.5) * PATCH; if (urbanAt(x, z) >= 0.26) patches.push([x, z, Math.hypot(x, z)]); }
+    patches.sort((p, q) => p[2] - q[2]);
+    for (const [px, pz] of patches) { const yaw = rnd() * Math.PI / 2, c = Math.cos(yaw), s = Math.sin(yaw), n = Math.ceil(PATCH / BLOCK / 2);
+      for (let i = -n; i < n; i++) for (let j = -n; j < n; j++) { const lx = (i + 0.5) * BLOCK, lz = (j + 0.5) * BLOCK, bx = px + lx * c + lz * s, bz = pz - lx * s + lz * c, u = urbanAt(bx, bz); if (rnd() > Math.min(1, u * 1.7) || land.has(cellKey(bx, bz, LAND))) continue;
+        const [dn, dw] = district(bx, bz); if (streets.length < 48000) streets.push([bx + (BLOCK / 2) * c, bz - (BLOCK / 2) * s, yaw + Math.PI / 2], [bx + (BLOCK / 2) * s, bz + (BLOCK / 2) * c, yaw]);
+        for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { if (rnd() > 0.3 + u * 0.7) continue; const ox = a * 47 + (rnd() - 0.5) * 7, oz = b * 47 + (rnd() - 0.5) * 7; placeAt(bx + ox * c + oz * s, bz - ox * s + oz * c, yaw, u, dn, dw); } } }
+    if (streets.length) { const geo = new T.PlaneGeometry(1, 1); geo.rotateX(-Math.PI / 2); const sm = new T.InstancedMesh(geo, new T.MeshLambertMaterial({ color: 0x9c988e }), streets.length); sm.frustumCulled = false; streets.forEach(([x, z, a], i) => { tmpM.compose(tmpP.set(x, 0.5, z), tmpQ.setFromAxisAngle(UP, a), tmpS.set(BLOCK, 1, 9)); sm.setMatrixAt(i, tmpM); }); built.add(sm); streetMesh = sm; }
+    // meshes per 5 km tile, shuffled, so far tiles can draw only some of their instances (see updateLod)
+    const tiled = (list, xOf, zOf, geo, material, fill) => { const tiles = new Map(); for (const it of list) { const k = Math.floor(xOf(it) / 5000) + ":" + Math.floor(zOf(it) / 5000); if (!tiles.has(k)) tiles.set(k, []); tiles.get(k).push(it); }
+      for (const items of tiles.values()) { for (let i = items.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [items[i], items[j]] = [items[j], items[i]]; }
+        const mesh = new T.InstancedMesh(geo, material, items.length); mesh.frustumCulled = false; let sx = 0, sz = 0; items.forEach((it, i) => { fill(mesh, it, i); sx += xOf(it); sz += zOf(it); }); built.add(mesh); lodTiles.push({ mesh, n: items.length, x: sx / items.length, z: sz / items.length }); } };
+    const instances = (list, tex, colors, tintSeed, thin) => { const geo = boxGeo(), material = new T.MeshLambertMaterial({ map: tex }), fill = (mesh, [x, z, a, b, h, yaw, r], i) => { tmpM.compose(tmpP.set(x, 0, z), tmpQ.setFromAxisAngle(UP, yaw), tmpS.set(a, h, b)); mesh.setMatrixAt(i, tmpM); mesh.setColorAt(i, tmpC.setHex(colors[Math.floor(r * colors.length * tintSeed) % colors.length])); };
+      if (thin) { tiled(list, it => it[0], it => it[1], geo, material, fill); return; }
+      const mesh = new T.InstancedMesh(geo, material, Math.max(1, list.length)); mesh.count = list.length; mesh.frustumCulled = false; list.forEach((it, i) => fill(mesh, it, i)); built.add(mesh); };
+    instances(low, facade(4, 3, "#8f9498", 0.3), [0xf3eadb, 0xeaddc4, 0xf4d9c6, 0xdde8d4, 0xe8d7df, 0xd6e2ea, 0xf1e4b6, 0xd8d2c6, 0xf6f1e6, 0xe2b7a0], 7, true);
+    instances(mid, facade(6, 8, "#858d94", 0.3), [0xf4efe4, 0xe7dfd0, 0xdedad2, 0xeadbc3, 0xd6dcde, 0xf0e2cf], 5, true);
+    instances(tower, facade(7, 22, "#7c8891", 0.28), [0xf1ece1, 0xe2dfd7, 0xe6d9c6, 0xd3dbde], 3);
+    instances(glass, facade(10, 26, "#7ea3bd", 0.08), [0xd6e7ef, 0xc4dbe8, 0xdce8ea, 0xcfe0dc, 0xbdd6e4], 3);
+    instances(shed, facade(5, 1, "#a8b0b4", 0.3), [0x8fb0c6, 0xbdbdb4, 0xa9b9c2, 0xc9c0ae], 3);
+    // black rooftop water tanks on low-rise houses
+    const tankList = low.slice(0, 9000).filter(b => b[6] < 0.55); if (tankList.length) { const tk = new T.InstancedMesh(new T.CylinderGeometry(0.75, 0.75, 1.5, 6), new T.MeshLambertMaterial({ color: 0x2f3134 }), tankList.length); tk.frustumCulled = false; tankList.forEach(([x, z, a, b, h], i) => { tmpM.compose(tmpP.set(x, h + 0.75, z), tmpQ.identity(), tmpS.set(1, 1, 1)); tk.setMatrixAt(i, tmpM); }); built.add(tk); tankMesh = tk; }
+    // 6. trees: tree-lined streets, dense real parks, sparse countryside
+    const trees = street.map(([x, z, r]) => [x, z, r, 4 + r * 3.5]), R0 = R / 1.15;
+    for (let i = 0; i < 70000 && trees.length < 34000; i++) { const ang = rnd() * 6.283, rr = Math.sqrt(rnd()) * R0, x = Math.cos(ang) * rr, z = Math.sin(ang) * rr, c = land.get(cellKey(x, z, LAND)); if (c === 1 || roadCells.has(cellKey(x, z, 20))) continue; if (c === 2) { trees.push([x, z, rnd(), 7 + rnd() * 8]); continue; } if (urbanAt(x, z) < 0.2 && rnd() < 0.3) trees.push([x, z, rnd(), 8 + rnd() * 9]); }
+    if (D.scenery) for (const p of D.scenery.park) { let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const [x, y] of p.pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); } for (let i = 0, n = Math.min(380, p.area / 2600); i < n; i++) { const x = x0 + rnd() * (x1 - x0), z = y0 + rnd() * (y1 - y0); if (land.get(cellKey(x, z, LAND)) === 2) trees.push([x, z, rnd(), 8 + rnd() * 8]); } }
+    const TC = [0x6f9a5e, 0x7fa86a, 0x5e8b55, 0x8bb173, 0x678f58];
+    tiled(trees, it => it[0], it => it[1], new T.IcosahedronGeometry(1, 0), new T.MeshPhongMaterial({ flatShading: true, shininess: 0, specular: 0x000000 }), (mesh, [x, z, r, s], i) => { tmpM.compose(tmpP.set(x, s * 0.95, z), tmpQ.setFromAxisAngle(UP, r * 6), tmpS.set(s, s * 1.15, s)); mesh.setMatrixAt(i, tmpM); mesh.setColorAt(i, tmpC.setHex(TC[i % TC.length])); });
+    buildLandmarks(); buildMetro();
+    built.userData.buildings = low.length + mid.length + tower.length + glass.length + shed.length;
+  }
+  function buildLandmarks() {
+    const solid = (x, y, z, w, h, d, color, geo) => { const m = new T.Mesh(geo || new T.BoxGeometry(1, 1, 1), new T.MeshLambertMaterial({ color })); m.position.set(x, y, z); m.scale.set(w, h, d); built.add(m); return m; };
+    const [vx, vz] = LL(12.9796, 77.5908), stone = 0xe9e2d2;   // Vidhana Soudha: granite front, wings, central dome
+    solid(vx, 11, vz, 200, 22, 90, stone); solid(vx, 25, vz, 90, 8, 50, stone); solid(vx, 32, vz, 26, 8, 26, stone);
+    const dome = new T.SphereGeometry(1, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2); solid(vx, 36, vz, 12, 14, 12, 0xd8cfb9, dome); solid(vx, 24, vz + 44, 60, 10, 12, stone);
+    for (const dx of [-85, 85]) solid(vx + dx, 22, vz, 8, 6, 8, 0xd8cfb9, dome);
+    const glassBlue = 0xa5c4d6, [ux, uz] = LL(12.9716, 77.5960);   // UB City
+    solid(ux, 62, uz, 30, 124, 26, glassBlue); solid(ux + 44, 48, uz + 18, 28, 96, 24, 0xb9d3e0); solid(ux, 130, uz, 12, 14, 10, 0xd9cfae, new T.ConeGeometry(0.9, 1, 4));
+    const [wx, wz] = LL(13.0120, 77.5550); solid(wx, 64, wz, 36, 128, 36, 0x9fbdd0);   // World Trade Center
+    const [ax, az] = LL(13.1989, 77.7068); solid(ax, 12, az, 880, 24, 170, 0xf3efe6); solid(ax, 28, az, 340, 8, 120, 0xdfe7ea);   // Kempegowda International Airport
+  }
+  function buildMetro() {
+    trainPaths = []; trainMesh = null; const m = D.urban && D.urban.metro; if (!m) return;
+    const H = 13, pos = [], dir = [], off = [], wid = [], col = [], idx = [], decks = [], pillars = [], byLine = new Map();
+    for (const line of m.lines) { let c; try { c = new T.Color(line.colour || "#8a8a8a"); } catch (e) { c = new T.Color(0x8a8a8a); }
+      let key = (line.name || line.colour) + "|" + line.colour, part = 0; while (byLine.has(key + part)) { const e = byLine.get(key + part), z = e.pts[e.pts.length - 1]; if (Math.hypot(z[0] - line.pts[0][0], z[1] - line.pts[0][1]) < 300) break; part++; } key += part;   // only join spans that actually connect
+      if (!byLine.has(key)) byLine.set(key, { color: c, pts: [], under: [] }); const entry = byLine.get(key), added = entry.pts.length ? line.pts.slice(1) : line.pts; entry.pts.push(...added); for (const _ of added) entry.under.push(!!line.tunnel);
+      if (line.tunnel) continue; const pts = line.pts, start = pos.length / 3;
+      for (let k = 0; k < pts.length; k++) { const p = pts[Math.max(0, k - 1)], q = pts[Math.min(pts.length - 1, k + 1)], dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy) || 1, nx = dy / L, nz = -dx / L;
+        for (const o of [-2, 2]) { pos.push(pts[k][0], H + 1, pts[k][1]); dir.push(nx, nz); off.push(o); wid.push(2); col.push(c.r, c.g, c.b); }
+        if (k > 0) { const a = start + (k - 1) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); const s = pts[k - 1], e = pts[k], sl = Math.hypot(e[0] - s[0], e[1] - s[1]); decks.push([(s[0] + e[0]) / 2, (s[1] + e[1]) / 2, sl, Math.atan2(-(e[1] - s[1]), e[0] - s[0])]); for (let d = 25; d < sl; d += 55) pillars.push([s[0] + (e[0] - s[0]) * d / sl, s[1] + (e[1] - s[1]) * d / sl]); } } }
+    if (pos.length) { const geo = new T.BufferGeometry(); geo.setAttribute("position", new T.Float32BufferAttribute(pos, 3)); geo.setAttribute("aDir", new T.Float32BufferAttribute(dir, 2)); geo.setAttribute("aOff", new T.Float32BufferAttribute(off, 1)); geo.setAttribute("aW", new T.Float32BufferAttribute(wid, 1)); geo.setAttribute("color", new T.Float32BufferAttribute(col, 3)); geo.setIndex(idx);
+      const mesh = new T.Mesh(geo, roadMesh.material); mesh.frustumCulled = false; built.add(mesh); }
+    const concrete = new T.MeshLambertMaterial({ color: 0xdcd6c8 });
+    if (decks.length) { const dm = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), concrete, decks.length); dm.frustumCulled = false; decks.forEach(([x, z, l, a], i) => { tmpM.compose(tmpP.set(x, H, z), tmpQ.setFromAxisAngle(UP, a), tmpS.set(l + 2, 1.8, 10)); dm.setMatrixAt(i, tmpM); }); built.add(dm); }
+    if (pillars.length) { const pm = new T.InstancedMesh(new T.CylinderGeometry(1.4, 1.6, 1, 8), concrete.clone(), pillars.length); pm.frustumCulled = false; pillars.forEach(([x, z], i) => { tmpM.compose(tmpP.set(x, H / 2, z), tmpQ.identity(), tmpS.set(1, H, 1)); pm.setMatrixAt(i, tmpM); }); built.add(pm); }
+    const up = m.stations.filter(s => !s.under); if (up.length) { const sm = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), new T.MeshLambertMaterial({ color: 0xf1ebdc }), up.length); sm.frustumCulled = false; up.forEach((s, i) => { tmpM.compose(tmpP.set(s.x, H + 3, s.y), tmpQ.identity(), tmpS.set(46, 8, 46)); sm.setMatrixAt(i, tmpM); }); built.add(sm); }
+    // decorative trains (not part of the traffic simulation)
+    for (const { color, pts, under } of byLine.values()) { if (pts.length < 2) continue; const cum = [0]; for (let k = 1; k < pts.length; k++) cum.push(cum[k - 1] + Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1])); trainPaths.push({ color, pts, under, cum, len: cum[cum.length - 1] }); }
+    const nTrains = trainPaths.reduce((a, p) => a + Math.ceil(p.len / 6000), 0); if (nTrains) { trainMesh = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), new T.MeshLambertMaterial(), nTrains); trainMesh.frustumCulled = false; trainMesh.setColorAt(0, tmpC.setHex(0xffffff)); built.add(trainMesh); }
+  }
+  function updateTrains(now) {
+    if (!trainMesh) return; let n = 0; const t = now / 1000 * 95;
+    for (const p of trainPaths) { const count = Math.ceil(p.len / 6000); for (let i = 0; i < count; i++) { const span = p.len * 2, raw = (t + i * span / count) % span, back = raw > p.len, d = back ? span - raw : raw; let lo = 0, hi = p.cum.length - 1; while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (p.cum[mid] <= d) lo = mid; else hi = mid; }
+        const a = p.pts[lo], b = p.pts[hi], s = p.cum[hi] - p.cum[lo] || 1, f = (d - p.cum[lo]) / s, x = a[0] + (b[0] - a[0]) * f, z = a[1] + (b[1] - a[1]) * f, o = back ? 2.2 : -2.2, ux = (b[0] - a[0]) / s, uz = (b[1] - a[1]) / s, hide = p.under[hi] ? 0.001 : 1;   // no train above ground on underground spans
+        tmpM.compose(tmpP.set(x - uz * o, 15.8, z + ux * o), tmpQ.setFromAxisAngle(UP, Math.atan2(-uz, ux)), tmpS.set(120 * hide, 3.6 * hide, 3 * hide)); trainMesh.setMatrixAt(n, tmpM); trainMesh.setColorAt(n, p.color); n++; } }
+    trainMesh.count = n; trainMesh.instanceMatrix.needsUpdate = true; if (trainMesh.instanceColor) trainMesh.instanceColor.needsUpdate = true;
+  }
+  let lodAt = 0, lodDist = -1, lodX = 0, lodZ = 0, lodYaw = 0, quality = 1, fpsAt = 0, fpsFrames = 0;
+  function adaptQuality(now) {   // on slower graphics hardware, draw fewer buildings rather than stutter
+    if (!world.ready || view.lockQuality) return; fpsFrames++; if (!fpsAt) { fpsAt = now; fpsFrames = 0; return; } if (now - fpsAt < 2500) return;
+    const fps = fpsFrames * 1000 / (now - fpsAt); fpsAt = now; fpsFrames = 0;
+    if (fps < 24 && quality > 0.2) { quality = Math.max(0.2, quality * 0.7); renderer.setPixelRatio(1); renderer.setSize(view.w, view.h, false); lodDist = -1; }
+  }
+  function updateLod(now) {   // near tiles draw everything, far tiles a thinning sample, tiles behind the camera nothing
+    if (now - lodAt < 200 || (Math.abs(view.dist - lodDist) < view.dist * 0.04 && Math.abs(view.tx - lodX) + Math.abs(view.tz - lodZ) < view.dist * 0.05 && Math.abs(view.yaw - lodYaw) < 0.04)) return;
+    lodAt = now; lodDist = view.dist; lodX = view.tx; lodZ = view.tz; lodYaw = view.yaw;
+    const cx = camera.position.x, cz = camera.position.z, fx = view.tx - cx, fz = view.tz - cz, fl = Math.hypot(fx, fz) || 1;
+    for (const t of lodTiles) { const dx = t.x - cx, dz = t.z - cz, d = Math.hypot(dx, dz); t.mesh.visible = d < 6000 || (dx * fx + dz * fz) / fl > -5000; const nearR = Math.max(3000, view.dist * 0.8), lod = d < nearR ? 1 : Math.max(0.15, (nearR / d) ** 1.3); t.mesh.count = Math.max(1, Math.ceil(t.n * lod * quality)); }
+    if (streetMesh) streetMesh.visible = view.dist < 16000; if (tankMesh) tankMesh.visible = view.dist < 2500;
+  }
+  function setRoad(road) {   // bright outline so the chosen road reads from far away
+    if (roadGlow) { built.remove(roadGlow); roadGlow.geometry.dispose(); roadGlow.material.dispose(); roadGlow = null; } if (!road || !built) return;
+    const g = world.g, pos = [], dir = [], off = [], wid = [], col = [], idx = [], c = new T.Color(0xf0b429);
+    for (const li of road.links) { const l = g.links[li], pts = l.geom, start = pos.length / 3; for (let k = 0; k < pts.length; k++) { const p = pts[Math.max(0, k - 1)], q = pts[Math.min(pts.length - 1, k + 1)], dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy) || 1; for (const o of [-1.5, 1.5]) { pos.push(pts[k][0] * g.mpu, 2.2 + g.elev(l, l.cum[k]), pts[k][1] * g.mpu); dir.push(dy / L, -dx / L); off.push(o); wid.push(1.5); col.push(c.r, c.g, c.b); } if (k > 0) { const a = start + (k - 1) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } } }
+    const geo = new T.BufferGeometry(); geo.setAttribute("position", new T.Float32BufferAttribute(pos, 3)); geo.setAttribute("aDir", new T.Float32BufferAttribute(dir, 2)); geo.setAttribute("aOff", new T.Float32BufferAttribute(off, 1)); geo.setAttribute("aW", new T.Float32BufferAttribute(wid, 1)); geo.setAttribute("color", new T.Float32BufferAttribute(col, 3)); geo.setIndex(idx);
+    const mat = roadMaterial(); mat.uniforms.uMinPx.value = 1.6; roadGlow = new T.Mesh(geo, mat); roadGlow.frustumCulled = false; built.add(roadGlow);
+  }
   function build() {
-    clearCity(); built = new T.Group(); scene.add(built);
+    clearCity(); built = new T.Group(); scene.add(built); roadGlow = null; trainMesh = null; trainPaths = []; lodTiles = []; streetMesh = null; tankMesh = null; lodDist = -1;
     const g = world.g, mpu = g.mpu, real = g.real, laneM = real ? 3.5 : 6.5, medM = real ? 0.6 : 2;
     const R = (g.j.radius || Math.max(g.bounds[2] - g.bounds[0], g.bounds[3] - g.bounds[1]) * mpu) * 1.15;
     // ground: painted grass texture
     const grass = softTex((x, s) => { x.fillStyle = "#9dbb7c"; x.fillRect(0, 0, s, s); const r = mulberry32(3);
       for (let i = 0; i < 900; i++) { const c = ["#93b373", "#a9c488", "#8cad6c", "#b2c991", "#98b777"][i % 5]; x.fillStyle = c; x.globalAlpha = 0.5; x.beginPath(); x.ellipse(r() * s, r() * s, 4 + r() * 18, 3 + r() * 10, r() * 3, 0, 7); x.fill(); } }, 256);
     grass.wrapS = grass.wrapT = T.RepeatWrapping; grass.repeat.set(R / 900, R / 900);
-    const ground = new T.Mesh(new T.CircleGeometry(R * 1.6, 96), new T.MeshLambertMaterial({ map: grass }));
-    ground.rotation.x = -Math.PI / 2; built.add(ground);
     const cx = (g.bounds[0] + g.bounds[2]) / 2 * mpu, cz = (g.bounds[1] + g.bounds[3]) / 2 * mpu;
-    if (!real) ground.position.set(cx, 0, cz);
+    if (!real) { const ground = new T.Mesh(new T.CircleGeometry(R * 1.6, 96), new T.MeshLambertMaterial({ map: grass })); ground.rotation.x = -Math.PI / 2; ground.position.set(cx, 0, cz); built.add(ground); }
     // lakes and parks
     if (real && D.scenery) {
       const shapes = (list) => list.map(p => new T.Shape(p.pts.map(([x, y]) => new T.Vector2(x, -y))));
@@ -751,7 +939,7 @@ const R3 = (() => {
     for (const l of g.links) {
       if (l.cls === "connector") { linkRanges[l.i] = null; continue; }
       const pts = l.geom, start = pos.length / 3, w = medM + l.lanes * laneM;
-      const base = new T.Color(l.level < 0 ? 0x5f9a96 : l.level > 0 ? 0xeee3cc : (BASE[l.cls] ?? BASE[""]));
+      const base = new T.Color(l.level < 0 ? 0x5f9a96 : l.level > 0 ? (real ? 0xd9d2c4 : 0xeee3cc) : ((real ? ASPHALT : BASE)[l.cls] ?? BASE[""]));
       for (let k = 0; k < pts.length; k++) {
         const p = pts[Math.max(0, k - 1)], q = pts[Math.min(pts.length - 1, k + 1)]; const dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy) || 1;
         const nx = dy / L, nz = -dx / L;    // left of travel
@@ -773,13 +961,16 @@ const R3 = (() => {
     // flyover pillars
     if (pillars.length) { const pm = new T.InstancedMesh(new T.CylinderGeometry(1.1, 1.4, 1, 7), new T.MeshLambertMaterial({ color: 0xe8dcc6 }), pillars.length);
       pillars.forEach(([x, z, h], i) => { tmpM.compose(tmpP.set(x, h / 2, z), tmpQ.identity(), tmpS.set(1, h, 1)); pm.setMatrixAt(i, tmpM); }); built.add(pm); }
-    // trees and little houses on a grid of cells, avoiding roads and lakes
+    const span = real ? R / 1.15 : R * 0.6;
+    if (real) buildMetropolis(R);
+    // schematic cities: trees and little houses on a grid of cells, avoiding roads and lakes
+    else {
     const cell = real ? 220 : 30, occ = new Set();
     for (const l of g.links) for (const [x, y] of l.geom) occ.add(Math.floor(x * mpu / cell) + ":" + Math.floor(y * mpu / cell));
     if (real && D.scenery) for (const w of D.scenery.water) { let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const [x, y] of w.pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
       for (let a = Math.floor(x0 / cell); a <= Math.floor(x1 / cell); a++) for (let b = Math.floor(y0 / cell); b <= Math.floor(y1 / cell); b++) occ.add(a + ":" + b + ":w"); }
     const rnd = mulberry32(42), trees = [], houses = [];
-    const span = real ? R / 1.15 : R * 0.6, N = real ? 26000 : 2500, NU = real ? 60000 : 0, URBAN = 16000;
+    const N = real ? 26000 : 2500, NU = real ? 60000 : 0, URBAN = 16000;
     for (let i = 0; i < N + NU; i++) {   // countryside everywhere + a dense layer over the urban core
       const ang = rnd() * Math.PI * 2, rr = Math.sqrt(rnd()) * (i < N ? span : URBAN), x = (real ? 0 : cx) + Math.cos(ang) * rr, z = (real ? 0 : cz) + Math.sin(ang) * rr;
       const key = Math.floor(x / cell) + ":" + Math.floor(z / cell); if (occ.has(key + ":w")) continue;
@@ -800,16 +991,18 @@ const R3 = (() => {
       tmpM.compose(tmpP.set(x, h / 2, z), q, tmpS.set(s, h, s * 0.85)); hb.setMatrixAt(i, tmpM); hb.setColorAt(i, tmpC.setHex(WC[i % 4]));
       tmpM.compose(tmpP.set(x, h + s * 0.27, z), tmpQ.setFromAxisAngle(UP, r * 3.1 + Math.PI / 4), tmpS.set(s * 0.95, s, s * 0.95)); roof.setMatrixAt(i, tmpM); roof.setColorAt(i, tmpC.setHex(RC[(i * 7) % 5])); });
     built.add(hb, roof);
+    }
     // clouds
-    cloudGroup = new T.Group(); const cm = new T.MeshPhongMaterial({ color: 0xffffff, flatShading: true, shininess: 0, specular: 0x000000, transparent: true, opacity: 0.93, emissive: 0x4a463e });
+    cloudGroup = new T.Group(); const cm = new T.MeshPhongMaterial({ color: 0xffffff, flatShading: true, shininess: 0, specular: 0x000000, transparent: true, opacity: real ? 0.72 : 0.93, emissive: 0x4a463e });
     const cr = mulberry32(9);
-    for (let i = 0; i < (real ? 34 : 8); i++) { const cl = new T.Group(); const s = real ? 900 + cr() * 900 : 60 + cr() * 50;
+    for (let i = 0; i < 8; i++) { const cl = new T.Group(); const s = real ? 900 + cr() * 900 : 60 + cr() * 50;
       for (let k = 0; k < 6; k++) { const b = new T.Mesh(new T.IcosahedronGeometry(s * (0.5 + cr() * 0.6), 1), cm); b.position.set((k - 2.5) * s * 0.55, cr() * s * 0.3, (cr() - 0.5) * s * 0.6); cl.add(b); }
-      const a = cr() * 7, rr = Math.sqrt(cr()) * span; cl.position.set((real ? 0 : cx) + Math.cos(a) * rr, real ? 3500 + cr() * 2500 : 250 + cr() * 150, (real ? 0 : cz) + Math.sin(a) * rr); cl.userData.v = 0.4 + cr(); cloudGroup.add(cl); }
+      const a = cr() * 7, rr = Math.sqrt(cr()) * span; cl.position.set((real ? 0 : cx) + Math.cos(a) * rr, real ? 9000 + cr() * 3000 : 250 + cr() * 150, (real ? 0 : cz) + Math.sin(a) * rr); cl.userData.v = 0.4 + cr(); cloudGroup.add(cl); }
     built.add(cloudGroup);
     // vehicles, ambulances, signals, packets
     vehMesh = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), new T.MeshLambertMaterial(), MAXV); vehMesh.frustumCulled = false; vehMesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
     vehMesh.setColorAt(0, tmpC.setHex(0xffffff)); vehMesh.count = 0; built.add(vehMesh);   // colour buffer must be sized before count drops to 0
+    cabMesh = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), new T.MeshLambertMaterial(), MAXV); cabMesh.frustumCulled = false; cabMesh.instanceMatrix.setUsage(T.DynamicDrawUsage); cabMesh.setColorAt(0, tmpC.setHex(0xffffff)); cabMesh.count = 0; built.add(cabMesh);
     ambMesh = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), new T.MeshBasicMaterial({ color: 0xd0453f }), 64); ambMesh.count = 0; ambMesh.frustumCulled = false; built.add(ambMesh);
     const ns = g.signals.length; let heads = 0; for (const id of g.signals) heads += g.inLinks.get(id).length;
     lampMesh = new T.InstancedMesh(new T.SphereGeometry(1, 10, 8), new T.MeshBasicMaterial(), heads); lampMesh.frustumCulled = false;
@@ -835,10 +1028,11 @@ const R3 = (() => {
     camera.position.set(view.tx + d * Math.sin(p) * Math.sin(y), d * Math.cos(p), view.tz + d * Math.sin(p) * Math.cos(y));
     camera.lookAt(view.tx, 0, view.tz);
     scene.fog.near = d * 1.6; scene.fog.far = d * 9;
-    const u = roadMesh.material.uniforms; u.uK.value = 2 * Math.tan(camera.fov * Math.PI / 360) / Math.max(1, view.h); u.fogNear.value = scene.fog.near; u.fogFar.value = scene.fog.far;
+    for (const mesh of roadGlow ? [roadMesh, roadGlow] : [roadMesh]) { const u = mesh.material.uniforms; u.uK.value = 2 * Math.tan(camera.fov * Math.PI / 360) / Math.max(1, view.h); u.fogNear.value = scene.fog.near; u.fogFar.value = scene.fog.far; }
+    if (roadGlow) roadGlow.visible = view.dist > 2500;
   }
   let heatAt = 0;
-  const cFree = new T.Color(HEAT.free), cBusy = new T.Color(HEAT.busy), cJam = new T.Color(HEAT.jam), cFlood = new T.Color(0x7fb0d6);
+  const cFree = new T.Color(HEAT.free), cBusy = new T.Color(HEAT.busy), cJam = new T.Color(HEAT.jam), cFlood = new T.Color(0x7fb0d6), cFade = new T.Color(0xcfc6b4);
   function updateHeat(sim) {   // tint every road by how full it is (soft greens to terracotta)
     const g = world.g, arr = roadColors.array, flooded = new Set(); for (const i of world.flooded) for (const li of g.floods[i].links) flooded.add(li);
     const corridor = new Set(); if (view.mode === "p2p") for (const m of sim.mesh.values()) for (const [li] of m.locks.values()) corridor.add(li);
@@ -847,25 +1041,38 @@ const R3 = (() => {
       if (f > 0.3) { const tgt = f > K.BACKPRESSURE_LEVEL ? cJam : f > 0.55 ? cBusy : cFree; tmpC.lerp(tgt, Math.min(1, 0.55 + f * 0.45)); }
       if (flooded.has(ls.l.i)) tmpC.lerp(cFlood, 0.7);
       if (corridor.has(ls.l.i)) tmpC.setHex(0xd8574d);
+      if (view.road && !view.road.set.has(ls.l.i)) tmpC.lerp(cFade, 0.4);
       for (let v = r[0]; v < r[1]; v++) { arr[v * 3] = tmpC.r; arr[v * 3 + 1] = tmpC.g; arr[v * 3 + 2] = tmpC.b; } }
     roadColors.needsUpdate = true;
   }
   const VLEN = { motorcycle: 2.2, bicycle: 1.9, car: 4.5, bus: 11, truck: 9, ambulance: 5.5 }, VWID = { motorcycle: 0.9, bicycle: 0.8, car: 1.9, bus: 2.6, truck: 2.5, ambulance: 2.1 }, VH = { motorcycle: 1.4, bicycle: 1.3, car: 1.6, bus: 3.2, truck: 3.0, ambulance: 2.4 };
-  const CARC = [0xf3e2c4, 0xd98f6e, 0x8eb4c9, 0xe9c46a, 0xb9c7a5, 0xe8eef2], KC = { motorcycle: 0x5e9fb0, bicycle: 0x7fb3a6, bus: 0xd9a441, truck: 0xb5694a };
+  const CARC = [0xf3e2c4, 0xd98f6e, 0x8eb4c9, 0xe9c46a, 0xb9c7a5, 0xe8eef2, 0xfafafa, 0x8b8f94], KC = { motorcycle: 0x5e9fb0, bicycle: 0x7fb3a6, bus: 0x3b8fc4, truck: 0xb5694a };
+  const RIDER = [0x3f6f9e, 0xc4673f, 0x5f8f6b, 0xe0c9a0, 0x7a4fa3], GLASS = 0x34424e;
   function updateVehicles(sim, tf) {
-    const g = world.g, mpu = g.mpu, real = g.real, laneM = real ? 3.5 : 6.5, medM = real ? 0.6 : 2, vs = real ? 1 : 3, near = view.dist < (real ? 9000 : 4000);
-    let n = 0, na = 0; const r2 = (view.dist * 1.6) ** 2;
-    if (near) for (const ls of sim.links) {
-      if (!ls.q.length) continue; const l = ls.l; const mx = (l.bbox[0] + l.bbox[2]) / 2 * mpu - view.tx, mz = (l.bbox[1] + l.bbox[3]) / 2 * mpu - view.tz; if (mx * mx + mz * mz > r2 + (l.glen * mpu) ** 2) continue;
+    const g = world.g, mpu = g.mpu, real = g.real, laneM = real ? 3.5 : 6.5, medM = real ? 0.6 : 2, vs = real ? 1 : 3, near = view.dist < (real ? 9000 : 4000), road = view.road;
+    const detail = view.dist < 3200, far = road ? Math.min(14, Math.max(1, view.dist / 1300)) : 1;   // far away, road-view vehicles are drawn larger so they stay visible
+    let n = 0, nc = 0, na = 0; const r2 = (view.dist * 1.6) ** 2;
+    const drawLink = (ls, boost) => { const l = ls.l;
       const lanes = l.lanes, tr = real ? 8 : 22, s0 = g.kind(l.src) === "gateway" ? 0 : tr / mpu, s1 = g.kind(l.dst) === "gateway" ? 0 : tr / mpu, L = Math.max(1, l.glen - s0 - s1);
       const tail = new Array(lanes).fill(0); let k = 0;
       const put = (v, d, len) => { const pa = R2pointAt(l, s0 + d), o = medM + ((v.id % lanes) + 0.5) * laneM; const x = pa[0] * mpu + pa[3] * o, z = pa[1] * mpu - pa[2] * o;
-        const h = VH[v.kind] * vs, y = 1.2 + g.elev(l, s0 + d) + h / 2; tmpQ.setFromAxisAngle(UP, Math.atan2(-pa[3], pa[2]) + Math.PI / 2);
-        tmpM.compose(tmpP.set(x, y, z), tmpQ, tmpS.set(len * mpu, h, VWID[v.kind] * vs));
-        if (v.emg) { if (na < 64) ambMesh.setMatrixAt(na++, tmpM); } else if (n < MAXV) { vehMesh.setMatrixAt(n, tmpM); vehMesh.setColorAt(n, tmpC.setHex(v.kind === "car" ? CARC[v.id % CARC.length] : KC[v.kind])); n++; } };
+        const hFull = VH[v.kind] * vs * boost, lenM = len * mpu * boost, wid = VWID[v.kind] * vs * boost, base = 1.2 + g.elev(l, s0 + d); tmpQ.setFromAxisAngle(UP, Math.atan2(-pa[3], pa[2]) + Math.PI / 2);
+        if (v.emg) { tmpM.compose(tmpP.set(x, base + hFull / 2, z), tmpQ, tmpS.set(lenM, hFull, wid)); if (na < 64) ambMesh.setMatrixAt(na++, tmpM); return; } if (n >= MAXV) return;
+        const two = v.kind === "motorcycle" || v.kind === "bicycle", h = detail ? hFull * (two ? 0.42 : v.kind === "bus" ? 0.62 : v.kind === "truck" ? 0.8 : 0.56) : hFull;
+        tmpM.compose(tmpP.set(x, base + h / 2, z), tmpQ, tmpS.set(lenM, h, wid)); vehMesh.setMatrixAt(n, tmpM); vehMesh.setColorAt(n, tmpC.setHex(v.kind === "car" ? CARC[v.id % CARC.length] : KC[v.kind])); n++;
+        if (!detail) return;   // cabins, bus window bands and riders, close up only
+        const h2 = hFull - h, ux = pa[2] * lenM, uz = pa[3] * lenM; let cl = lenM * 0.55, cw = wid * 0.88, sh = -0.04, col = GLASS;
+        if (v.kind === "bus") { cl = lenM * 0.97; cw = wid * 0.97; sh = 0; } else if (v.kind === "truck") { cl = lenM * 0.24; cw = wid * 0.95; sh = 0.36; } else if (two) { cl = lenM * 0.28; cw = wid * 0.62; sh = -0.05; col = RIDER[v.id % RIDER.length]; }
+        tmpM.compose(tmpP.set(x + ux * sh, base + h + h2 / 2, z + uz * sh), tmpQ, tmpS.set(cl, h2, cw)); cabMesh.setMatrixAt(nc, tmpM); cabMesh.setColorAt(nc, tmpC.setHex(col)); nc++; };
       for (; k < ls.q.length; k++) { const v = ls.q[k]; if (v.ready > tf) break; const lane = v.id % lanes, len = VLEN[v.kind] * vs / mpu; const d = L - tail[lane] - len / 2; tail[lane] += Math.max(len + 0.8 / mpu, 7 * vs / mpu * v.pcu * 0.85); put(v, Math.max(len / 2, d), len); }
-      for (; k < ls.q.length; k++) { const v = ls.q[k], lane = v.id % lanes, len = VLEN[v.kind] * vs / mpu; const p = Math.min(1, Math.max(0, (tf - v.enter) / Math.max(0.1, v.ready - v.enter))); put(v, Math.max(len / 2, Math.min(p * L, L - tail[lane] - len / 2 - 1)), len); }
+      for (; k < ls.q.length; k++) { const v = ls.q[k], lane = v.id % lanes, len = VLEN[v.kind] * vs / mpu; const p = Math.min(1, Math.max(0, (tf - v.enter) / Math.max(0.1, v.ready - v.enter))); put(v, Math.max(len / 2, Math.min(p * L, L - tail[lane] - len / 2 - 1)), len); } };
+    if (road) for (const li of road.links) { const ls = sim.links[li]; if (ls.q.length) drawLink(ls, far); }   // the chosen road first, at any distance
+    if (near) for (const ls of sim.links) {
+      if (!ls.q.length || (road && road.set.has(ls.l.i))) continue; const l = ls.l; const mx = (l.bbox[0] + l.bbox[2]) / 2 * mpu - view.tx, mz = (l.bbox[1] + l.bbox[3]) / 2 * mpu - view.tz; if (mx * mx + mz * mz > r2 + (l.glen * mpu) ** 2) continue;
+      drawLink(ls, 1);
     }
+    if (road) road.drawn = n + na;
+    cabMesh.count = nc; cabMesh.instanceMatrix.needsUpdate = true; if (cabMesh.instanceColor) cabMesh.instanceColor.needsUpdate = true;
     vehMesh.count = n; vehMesh.instanceMatrix.needsUpdate = true; if (vehMesh.instanceColor) vehMesh.instanceColor.needsUpdate = true;
     ambMesh.count = na; ambMesh.instanceMatrix.needsUpdate = true; ambMesh.material.color.setHex(Math.floor(performance.now() / 180) % 2 ? 0xd0453f : 0xfff8ec);
   }
@@ -887,19 +1094,19 @@ const R3 = (() => {
     world.pulses = keep; pulsePoints.geometry.setDrawRange(0, n); pulsePoints.geometry.attributes.position.needsUpdate = true; pulsePoints.geometry.attributes.color.needsUpdate = true;
   }
   return {
-    init, build,
+    init, build, setRoad, info() { return renderer.info.render; },
     resize() { if (!renderer) return; renderer.setSize(view.w, view.h, false); camera.aspect = view.w / Math.max(1, view.h); camera.updateProjectionMatrix(); },
-    fit() { const g = world.g, mpu = g.mpu; const [x0, y0, x1, y1] = g.bounds; view.tx = (x0 + x1) / 2 * mpu; view.tz = (y0 + y1) / 2 * mpu + (g.real ? 6000 : 40); view.dist = Math.max(x1 - x0, y1 - y0) * mpu * (g.real ? 0.95 : 1.25); view.pitch = 0.9; view.yaw = 0.3; view.fly = null; },
+    fit() { const g = world.g, mpu = g.mpu; const [x0, y0, x1, y1] = g.bounds; if (g.real) { view.tx = 1500; view.tz = -2500; view.dist = 13000; view.pitch = 1.08; view.yaw = 0.35; } else { view.tx = (x0 + x1) / 2 * mpu; view.tz = (y0 + y1) / 2 * mpu + 40; view.dist = Math.max(x1 - x0, y1 - y0) * mpu * 1.25; view.pitch = 0.9; view.yaw = 0.3; } view.fly = null; },
     flyTo(x, z, dist) { view.fly = { t0: performance.now(), from: [view.tx, view.tz, view.dist, view.pitch], to: [x, z, dist, 1.0] }; },
     project(x, y, z) { tmpP.set(x, y, z).project(camera); return [(tmpP.x + 1) / 2 * view.w, (1 - tmpP.y) / 2 * view.h, tmpP.z < 1 && tmpP.z > -1]; },
     groundAt(sx, sy) { const v = new T.Vector3((sx / view.w) * 2 - 1, -(sy / view.h) * 2 + 1, 0.5).unproject(camera).sub(camera.position).normalize(); if (v.y >= -1e-4) return null; const t = -camera.position.y / v.y; return [camera.position.x + v.x * t, camera.position.z + v.z * t]; },
     render(tf, now) {
       if (view.fly) { const f = Math.min(1, (now - view.fly.t0) / 1300), e = f < 0.5 ? 2 * f * f : 1 - (-2 * f + 2) ** 2 / 2; const [a, b] = [view.fly.from, view.fly.to];
         view.tx = a[0] + (b[0] - a[0]) * e; view.tz = a[1] + (b[1] - a[1]) * e; view.dist = Math.exp(Math.log(a[2]) + (Math.log(b[2]) - Math.log(a[2])) * e); view.pitch = a[3] + (b[3] - a[3]) * e; if (f >= 1) view.fly = null; }
-      placeCamera();
+      placeCamera(); adaptQuality(now); updateLod(now);
       const sim = world.sims[view.mode];
       if (now - heatAt > 400) { updateHeat(sim); heatAt = now; }
-      updateVehicles(sim, tf); updateSignals(sim, now); updatePulses(now);
+      updateVehicles(sim, tf); updateSignals(sim, now); updatePulses(now); updateTrains(now);
       for (const c of cloudGroup.children) { c.position.x += c.userData.v * (world.g.real ? 6 : 0.4); if (c.position.x > built.userData.cx + built.userData.R) c.position.x -= 2 * built.userData.R; }
       renderer.render(scene, camera);
     },
@@ -988,12 +1195,17 @@ function drawOverlay(now) {
     x.beginPath(); x.moveTo(p[0] - 7, by + h - 1); x.lineTo(p[0], by + h + 10); x.lineTo(p[0] + 7, by + h - 1); x.fill(); x.stroke();
     x.fillStyle = "#3d3830"; x.textAlign = "left"; lines.forEach((l, i) => x.fillText(l, bx + 9, by + 6 + i * 15)); x.textAlign = "center";
     for (let cx = Math.floor(bx / 40); cx <= Math.floor((bx + w) / 40); cx++) for (let cy = Math.floor(by / 16); cy <= Math.floor((by + h) / 16); cy++) occ.add(cx + ":" + cy); x.globalAlpha = 1; }
-  for (const id of g.signals) { const n = g.nodes.get(id); if (!(!g.real || (n.landmark && ppm > 0.006) || ppm > 0.9 || view.sel === id)) continue; const p = R.screen(n.x, n.y, 12); if (!p) continue;
+  for (const id of g.signals) { const n = g.nodes.get(id); if (!(!g.real || (n.landmark && ppm > 0.006 && !view.road) || (ppm > 0.9 && !view.road) || view.sel === id)) continue; const p = R.screen(n.x, n.y, 12); if (!p) continue;
     place(p[0], p[1] + 8, n.name, "800 12px Nunito, sans-serif", sim.killed.has(id) ? "#a8443e" : "#3d3830", view.sel === id); }
-  for (const n of g.j.nodes) { if (n.kind !== "gateway") continue; const p = R.screen(n.x, n.y); if (!p) continue; const hosp = !!n.hospital || /Hospital|Health/.test(n.name);
+  for (const n of g.j.nodes) { if (n.kind !== "gateway" || view.road) continue; const p = R.screen(n.x, n.y); if (!p) continue; const hosp = !!n.hospital || /Hospital|Health/.test(n.name);
     if (g.real && /city edge/.test(n.name) && ppm < 0.02) continue; place(p[0], p[1] + 4, (hosp ? "✚ " : "") + n.name, "700 11px Nunito, sans-serif", hosp ? "#a8443e" : "#6d6455", false); }
-  if (g.j.features && ppm > 0.04) for (const f of g.j.features) { const p = R.screen(f.x, f.y, f.kind === "flyover" ? FLY_H : 0); if (!p) continue; place(p[0], p[1] - 20, (f.kind === "flyover" ? "▲ " : "▼ ") + f.name, "700 11px Nunito, sans-serif", f.kind === "flyover" ? "#7a6a52" : "#3f7f78", false); }
-  if (D.scenery && g.real && ppm > 0.01) for (const w of D.scenery.water.slice(0, 80)) { if (!w.name) continue; const [cx, cy] = w.pts.reduce((a, p) => [a[0] + p[0] / w.pts.length, a[1] + p[1] / w.pts.length], [0, 0]); const p = R.screen(cx, cy); if (!p) continue; place(p[0], p[1], w.name, "italic 600 11px Fraunces, serif", "#3e7590", false, "rgba(0,0,0,0)"); }
+  if (g.j.features && ppm > (g.real ? 0.3 : 0.04) && !view.road) for (const f of g.j.features) { const p = R.screen(f.x, f.y, f.kind === "flyover" ? FLY_H : 0); if (!p) continue; place(p[0], p[1] - 20, (f.kind === "flyover" ? "▲ " : "▼ ") + f.name, "700 11px Nunito, sans-serif", f.kind === "flyover" ? "#7a6a52" : "#3f7f78", false); }
+  if (D.scenery && g.real && ppm > 0.01 && !view.road) for (const w of D.scenery.water.slice(0, 80)) { if (!w.name) continue; const [cx, cy] = w.pts.reduce((a, p) => [a[0] + p[0] / w.pts.length, a[1] + p[1] / w.pts.length], [0, 0]); const p = R.screen(cx, cy); if (!p) continue; place(p[0], p[1], w.name, "italic 600 11px Fraunces, serif", "#3e7590", false, "rgba(0,0,0,0)"); }
+  if (g.real && R.is3d() && !view.road) {
+    if (ppm > 0.0075 && ppm < 0.2) for (const d of DISTRICTS) { const p = R.screen(d.x, d.z, 90); if (p) place(p[0], p[1], d.name, "700 12px Fraunces, serif", "#4d4336", false); }
+    if (ppm > 0.03) for (const m of LANDMARKS) { const p = R.screen(m.x, m.z, 60); if (p) place(p[0], p[1], "★ " + m.name, "800 11px Nunito, sans-serif", "#7a5a2c", false); }
+    const metro = D.urban && D.urban.metro; if (metro && ppm > 0.045) for (const s of metro.stations) { const p = R.screen(s.x, s.y, s.under ? 3 : 18); if (p) place(p[0], p[1] - 16, "Ⓜ " + s.name, "700 11px Nunito, sans-serif", "#6a4a8f", false); }
+  }
   if (view.sel) { const n = g.nodes.get(view.sel); const p = R.screen(n.x, n.y, 12); if (p) { x.strokeStyle = "#3d3830"; x.lineWidth = 1.5; x.setLineDash([4, 3]); x.beginPath(); x.arc(p[0], p[1], 16, 0, 7); x.stroke(); x.setLineDash([]); } }
 }
 function wrap(x, text, maxW) { const words = text.split(" "), lines = []; let cur = ""; for (const w of words) { const t = cur ? cur + " " + w : w; if (x.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t; } if (cur) lines.push(cur); return lines.slice(0, 4); }
@@ -1013,10 +1225,59 @@ function fillSelects() {
   opt($("killNode"), (landmarks.length ? landmarks : g.signals).map(s => [s, g.nodes.get(s).name]));
   const jumps = landmarks.map(s => ["n:" + s, "● " + g.nodes.get(s).name]).concat((g.j.features || []).map((f, i) => ["f:" + i, (f.kind === "flyover" ? "▲ " : "▼ ") + f.name]));
   opt($("jump"), jumps, "Fly to junction / flyover…");
+  g.roads = roadCatalog(g);
+  opt($("roadSel"), [...g.roads.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([name, r]) => [name, `${name} (${r.km < 10 ? r.km.toFixed(1) : r.km.toFixed(0)} km)`]), R3 ? "Watch a road in 3D…" : "Road view needs 3D");
+  $("roadSel").disabled = !R3;
   $("rushBtn").textContent = "Trigger " + g.j.rushLabel;
   $("cityDesc").textContent = g.j.description; $("cityDesc").title = g.j.description;
-  $("attrib").textContent = g.j.attribution || "";
+  const urbanNote = !g.real ? "" : ` · Buildings generated along real roads${D.urban && D.urban.towers && D.urban.towers.length ? " (tall ones from OSM)" : ", not real footprints"}${D.urban && D.urban.metroApproximate ? " · Metro lines approximate" : ""}`;
+  $("attrib").textContent = (g.j.attribution || "") + urbanNote;
   $("netInfo").textContent = `${fmtN(g.signals.length)} signal peers · ${fmtN(g.junctions.length)} unsignalised junctions · ${fmtN(g.links.length)} road links · ${fmtN(g.ods.reduce((a, o) => a + o.vph, 0))} veh/h demand`;
+}
+// ------------------------------------------------------------------ road view
+const GENERIC_ROAD = /^(|secondary|primary|tertiary|trunk|motorway|connector|(secondary|primary|tertiary|trunk|motorway) link)$/i, ROAD_ALIAS = { "Bellary Road": "Ballari Road" };
+function roadCatalog(g) {   // real, named roads: both directions of travel are grouped under one name
+  const roads = new Map();
+  for (const l of g.links) { if (l.cls === "connector") continue; const raw = l.name || ""; if (GENERIC_ROAD.test(raw.trim())) continue; const name = ROAD_ALIAS[raw] || raw; if (!roads.has(name)) roads.set(name, { links: [], metres: 0 }); const r = roads.get(name); r.links.push(l.i); r.metres += l.length; }
+  for (const [name, r] of roads) { r.km = r.metres / 2000; if (g.real && r.km < 0.8) roads.delete(name); }
+  return roads;
+}
+function openRoad(name) {
+  const g = world.g, r = g.roads.get(name); if (!r || !R3) return;
+  if (view.kind !== "3d") $("viewSeg").querySelector('[data-v="3d"]').click();
+  // walk the road point to point, so the slider and the drive follow its shape (Outer Ring Road is a ring).
+  // Points close to the current one, such as the opposite carriageway, are dropped from the walk.
+  const all = []; for (const li of r.links) { const l = g.links[li], m = g.mpu; for (const pt of l.geom) all.push({ x: pt[0] * m, z: pt[1] * m }); }
+  const mx = all.reduce((a, s) => a + s.x, 0) / all.length, mz = all.reduce((a, s) => a + s.z, 0) / all.length; let xx = 0, xz = 0, zz = 0; for (const s of all) { xx += (s.x - mx) ** 2; xz += (s.x - mx) * (s.z - mz); zz += (s.z - mz) ** 2; }
+  const th = 0.5 * Math.atan2(2 * xz, xx - zz); let cur = all.reduce((best, s) => { const p = (s.x - mx) * Math.cos(th) + (s.z - mz) * Math.sin(th); return p < best.p ? { p, s } : best; }, { p: Infinity, s: all[0] }).s;
+  const left = new Set(all), mids = []; let walked = 0, gap = 0;
+  while (cur) { cur.p = walked; mids.push(cur); for (const s of left) if (Math.hypot(s.x - cur.x, s.z - cur.z) < 70) left.delete(s); let next = null, nd = Infinity; for (const s of left) { const d = Math.hypot(s.x - cur.x, s.z - cur.z); if (d < nd) { nd = d; next = s; } } if (next) { walked += nd; gap = Math.max(gap, nd); } cur = next; }
+  if (mids.length < 2) mids.push({ x: mids[0].x + 1, z: mids[0].z, p: 1 });
+  const signals = new Set(); for (const li of r.links) { const d = g.links[li].dst; if (g.kind(d) === "signal") signals.add(d); }
+  view.road = { name, links: r.links, set: new Set(r.links), stops: mids, km: r.km, gap, signals: signals.size, t: 0, drive: false, drawn: 0 };
+  view.sel = null; $("inspector").hidden = true; R3.setRoad(view.road);
+  $("roadCard").hidden = false; $("rName").textContent = name; $("rSlide").value = 0; $("rDrive").textContent = "Drive along"; $("roadSel").value = name;
+  $("rLen").textContent = `${r.km < 10 ? r.km.toFixed(1) : r.km.toFixed(0)} km · ${signals.size} signals on it`; $("rNote").textContent = (gap > 5000 ? "This name covers separate stretches of road. " : "") + "Vehicles come from the simulation, not live traffic.";
+  fitRoad(); renderRoad();
+}
+function fitRoad() { const r = view.road; if (!r) return; r.drive = false; $("rDrive").textContent = "Drive along"; let x0 = 1e12, z0 = 1e12, x1 = -1e12, z1 = -1e12; for (const s of r.stops) { x0 = Math.min(x0, s.x); z0 = Math.min(z0, s.z); x1 = Math.max(x1, s.x); z1 = Math.max(z1, s.z); }
+  R3.flyTo((x0 + x1) / 2, (z0 + z1) / 2, Math.max(700, Math.max(x1 - x0, z1 - z0) * 1.45)); }
+function closeRoad() { view.road = null; $("roadCard").hidden = true; $("roadSel").value = ""; if (R3) R3.setRoad(null); }
+function roadPoint(r, ahead = 0) { const s = r.stops, a = Math.min(s[s.length - 1].p, s[s.length - 1].p * r.t + ahead); let lo = 0, hi = s.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (s[m].p <= a) lo = m; else hi = m; } const span = s[hi].p - s[lo].p || 1, f = Math.min(1, Math.max(0, (a - s[lo].p) / span)); return [s[lo].x + (s[hi].x - s[lo].x) * f, s[lo].z + (s[hi].z - s[lo].z) * f]; }
+function roadCamera(r, ease) {   // low chase camera looking along the road
+  const [x, z] = roadPoint(r), [ax, az] = roadPoint(r, 90), k = ease; view.fly = null; view.tx += (x - view.tx) * k; view.tz += (z - view.tz) * k; view.dist += (170 - view.dist) * k; view.pitch += (1.12 - view.pitch) * k; const want = Math.atan2(x - ax, z - az); let dy = want - view.yaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI; view.yaw += dy * k;
+}
+function stepRoad(dt) { const r = view.road; if (!r || !r.drive) return; const span = Math.max(1, r.stops[r.stops.length - 1].p); r.t = (r.t + 90 * dt / span) % 1; $("rSlide").value = Math.round(r.t * 1000); roadCamera(r, 0.08); }
+const fmtKind = { motorcycle: "2-wheelers", car: "Cars", bus: "Buses", truck: "Trucks", bicycle: "Bicycles", ambulance: "Ambulances" };
+function renderRoad() {
+  const r = view.road; if (!r) return; const sim = world.sims[view.mode], t = world.t, kinds = {}; let total = 0, moving = 0, waiting = 0, speed = 0, nSpeed = 0, worst = null, worstFill = -1;
+  for (const li of r.links) { const ls = sim.links[li]; for (const v of ls.q) { total++; kinds[v.kind] = (kinds[v.kind] || 0) + 1; if (v.ready > t) { moving++; const tt = v.ready - v.enter; if (tt > 0.5) { speed += ls.l.length / tt; nSpeed++; } } else waiting++; } const f = ls.occ / ls.l.capacity; if (f > worstFill) { worstFill = f; worst = ls.l; } }
+  $("rTotal").textContent = fmtN(total);
+  const rows = (el, items) => { el.textContent = ""; for (const [a, b] of items) { const s = document.createElement("span"); s.textContent = a; const n = document.createElement("b"); n.textContent = b; el.append(s, n); } };
+  rows($("rKinds"), Object.keys(fmtKind).filter(k => kinds[k]).map(k => [fmtKind[k], fmtN(kinds[k])]));
+  const g = world.g, nm = (id) => g.nodes.get(id)?.name || id;
+  rows($("rStats"), [["Moving", fmtN(moving)], ["Waiting at signals or in queues", fmtN(waiting)], ["Average speed while moving", nSpeed ? `${(speed / nSpeed * 3.6).toFixed(0)} km/h` : "–"], ["Fullest stretch", worst ? `${Math.round(Math.min(1, worstFill) * 100)}%` : "–"]]);
+  if (worst) $("rStats").lastChild.title = `${nm(worst.src)} to ${nm(worst.dst)}`;
 }
 function warmUp(steps, done) {
   $("loading").hidden = false; let k = 0; const w = world;
@@ -1032,7 +1293,7 @@ function setViewKind(k) {
 function buildCity() { if (R3) R3.build(); R.fit(); }
 function resetWorld(newCity) {
   if (newCity) view.city = newCity;
-  world = new World(view.city, ++seedCounter); world.fallback = $("fallback").value;
+  closeRoad(); world = new World(view.city, ++seedCounter); world.fallback = $("fallback").value;
   view.sel = null; $("inspector").hidden = true; fillSelects(); buildCity(); renderSide(true);
   warmUp(world.g.real ? 1200 : 420, () => renderSide(true));
 }
@@ -1053,6 +1314,12 @@ $("jump").onchange = (e) => { const v = e.target.value; if (!v) return; let p;
   if (v.startsWith("n:")) { const n = world.g.nodes.get(v.slice(2)); p = [n.x, n.y]; view.sel = n.id; $("inspector").hidden = false; renderInspector(); }
   else { const f = world.g.j.features[Number(v.slice(2))]; p = [f.x, f.y]; }
   R.flyTo(p[0], p[1]); e.target.value = ""; };
+$("roadSel").onchange = (e) => { if (e.target.value) openRoad(e.target.value); else closeRoad(); };
+$("roadClose").onclick = closeRoad;
+$("rWhole").onclick = fitRoad;
+$("rDrive").onclick = () => { const r = view.road; if (!r) return; r.drive = !r.drive; $("rDrive").textContent = r.drive ? "Stop" : "Drive along"; };
+$("rSlide").oninput = (e) => { const r = view.road; if (!r) return; r.drive = false; $("rDrive").textContent = "Drive along"; r.t = Number(e.target.value) / 1000; roadCamera(r, 1); };
+for (const id of ["gl", "map"]) for (const ev of ["pointerdown", "wheel"]) $(id).addEventListener(ev, () => { if (view.road && view.road.drive) { view.road.drive = false; $("rDrive").textContent = "Drive along"; } }, { passive: true });
 $("zIn").onclick = () => R.zoom(1.6, view.w / 2, view.h / 2);
 $("zOut").onclick = () => R.zoom(1 / 1.6, view.w / 2, view.h / 2);
 $("zFit").onclick = () => R.fit();
@@ -1072,7 +1339,7 @@ for (const c of [$("map"), $("gl")]) { let drag = null;
 (() => { const L = $("legend"); const add = (html) => { const s = document.createElement("span"); s.className = "lg"; s.innerHTML = html; L.append(s); };
   add(`<i class="sw" style="background:${HEAT.free}"></i>Free`); add(`<i class="sw" style="background:${HEAT.busy}"></i>Busy`); add(`<i class="sw" style="background:${HEAT.jam}"></i>Jammed`);
   add('<i class="sw" style="background:#f6efe0;box-shadow:0 0 0 1px #b9a98a"></i>Flyover'); add('<i class="sw" style="background:#9fbfb8"></i>Underpass');
-  add('<i class="sw" style="background:#5e9fb0"></i>2-wheeler'); add('<i class="sw" style="background:#e9c46a"></i>Car'); add('<i class="sw" style="background:#d9a441"></i>Bus'); add('<i class="sw" style="background:#b5694a"></i>Truck');
+  add('<i class="sw" style="background:#5e9fb0"></i>2-wheeler'); add('<i class="sw" style="background:#e9c46a"></i>Car'); add('<i class="sw" style="background:#3b8fc4"></i>Bus'); add('<i class="sw" style="background:#b5694a"></i>Truck');
   add('<i class="dot" style="background:#c94f4a"></i>Ambulance'); add(`<i class="dot" style="background:${PKT_COLOR.PLATOON}"></i>Platoon msg`); add(`<i class="dot" style="background:${PKT_COLOR.BACKPRESSURE_WARN}"></i>Backpressure`);
   add('<span style="color:#857a66">· 3D: drag to pan, right-drag to rotate</span>'); })();
 if (D.edge) { $("kFps").textContent = D.edge.fps + " FPS"; $("kFpsD").textContent = D.edge.detail; } else { $("kFps").textContent = "n/a"; $("kFpsD").textContent = "run scripts/export_edge.py"; }
@@ -1119,7 +1386,7 @@ function renderSide(force) {
   const sims = world.sims, cur = sims[view.mode].kpi, fx = sims.fixed.kpi;
   $("clock").textContent = fmtClock(world.t);
   const chip = $("modeChip"); chip.textContent = MODE_LABEL[view.mode]; chip.style.background = MODE_COLOR[view.mode];
-  updateScaleBar();
+  updateScaleBar(); renderRoad();
   const banner = $("banner"); banner.textContent = "";
   const addB = (text, col) => { const d = document.createElement("div"); d.className = "alert"; d.style.color = col; d.textContent = text; banner.append(d); };
   if (world.t < world.rushUntil) addB(`${world.g.j.rushLabel} · ${Math.ceil((world.rushUntil - world.t) / 60)} min left`, "#b07d22");
@@ -1196,6 +1463,7 @@ function frame(now) {
   const dt = Math.min(0.25, (now - last) / 1000); last = now;
   if (world.ready && !view.paused) { acc += dt * view.speed; let steps = 0; const t0 = performance.now();
     while (acc >= 1 && steps < 30 && performance.now() - t0 < 40) { world.step(); acc -= 1; steps++; } if (acc > 3) acc = 0; }
+  stepRoad(dt);
   const tf = world.t + (view.paused ? 0 : Math.min(acc, 1)) - 1;
   if (world.ready || now - lastWarmDraw > 600) { lastWarmDraw = now; if (R.is3d()) R3.render(tf, now); else draw2d(tf, now); drawOverlay(now); }
   renderSide(false);
@@ -1206,7 +1474,7 @@ if (R3) R3.init();
 resize();
 world = new World(view.city, seedCounter); fillSelects(); setViewKind(view.kind); buildCity(); renderSide(true);
 warmUp(world.g.real ? 1200 : 420, () => renderSide(true));
-window.__cc = { world: () => world, view, R, renderSide, renderInspector, resetWorld, setViewKind };  // test hook
+window.__cc = { world: () => world, view, R, renderSide, renderInspector, resetWorld, setViewKind, openRoad, closeRoad, roadCamera, R3 };  // test hook
 requestAnimationFrame(frame);
 })();
 </script>

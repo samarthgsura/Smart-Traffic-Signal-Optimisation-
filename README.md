@@ -247,6 +247,16 @@ UVH-26 has only been used in this comparison so far.
 clip 2 with detection boxes added, shared under the same licence. UVH-26 model by AIM @ IISc,
 Apache 2.0.*
 
+## What is real in the 3D city
+
+| Element | Source |
+|---|---|
+| Roads, signals, flyovers, underpasses, lakes, parks | OpenStreetMap |
+| Road dropdown ("Watch a road in 3D") | Real road names from OpenStreetMap; the vehicles and counts come from the simulation, not live traffic |
+| Buildings, local streets | **Generated**, not real footprints. Density follows the real road network and known districts such as MG Road, Whitefield and Electronic City |
+| Vidhana Soudha, UB City, World Trade Center, airport terminal | Simplified shapes at approximate real positions |
+| Namma Metro lines and stations | **Approximate** hand-entered positions; `python scripts/fetch_osm_urban.py` replaces them with OpenStreetMap data when Overpass is available. Trains are decorative and not part of the traffic simulation |
+
 ## Tech stack
 
 Python 3.13 · Ultralytics YOLOv8n · Supervision (ByteTrack, zones) · OpenCV ·
@@ -264,6 +274,7 @@ traffic/city_graph.py     Road networks: real Bengaluru (loaded from JSON) + sch
 scripts/fetch_osm.py      Download Bengaluru's major roads from OpenStreetMap (Overpass API)
 scripts/build_osm_city.py Turn the OSM download into data/cities/bengaluru_osm.json
 scripts/fetch_osm_scenery.py  Lakes and parks for the 3D view -> data/cities/bengaluru_scenery.json
+scripts/fetch_osm_urban.py    Namma Metro + tall buildings -> data/cities/bengaluru_urban.json
 traffic/p2p_mesh.py       Peer-to-peer signal mesh: packets, bus, MeshNode controller
 traffic/city_sim.py       Multi-junction simulator: fixed / isolated / P2P modes, events, score
 traffic/web/command_center.html  Live canvas Command Center (embedded by app.py)
@@ -338,5 +349,8 @@ averaged benchmark results above.
 
 ## AI tools used
 
-Claude (Claude Code) was used to help design the architecture and write code and
-documentation. All results were produced by running the code in this repository.
+This project was built with substantial help from Claude Code, Anthropic's AI coding
+assistant (model: Claude Opus 5.5). Claude helped design the architecture and wrote most of
+the code and documentation, including the simulator, signal controllers, dashboard, 3D city
+view and data scripts, working from Samarth's direction and feedback. All results were
+produced by running the code in this repository.
